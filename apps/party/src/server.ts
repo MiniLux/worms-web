@@ -172,6 +172,7 @@ export default class GameServer implements Party.Server {
         this.room.storage.setAlarm(
           Date.now() + this.state.turnTimeRemaining * 1000,
         );
+        this.checkCpuTurn();
       }
       return;
     }
@@ -372,6 +373,38 @@ export default class GameServer implements Party.Server {
 
   // ─── Handlers ──────────────────────────────────────────
 
+  private isCpuPlayer(playerId: string): boolean {
+    return playerId.startsWith("cpu-");
+  }
+
+  /** After a turn advances, check if the new active player is CPU and auto-skip */
+  private checkCpuTurn(): void {
+    if (!this.state || this.state.phase !== "playing") return;
+    if (!this.isCpuPlayer(this.state.activePlayerId)) return;
+
+    // CPU turn: wait a short moment then skip
+    setTimeout(() => {
+      if (!this.state || this.state.phase !== "playing") return;
+      if (!this.isCpuPlayer(this.state.activePlayerId)) return;
+
+      this.movingDirection = null;
+      this.broadcastAll({ type: "TURN_END" });
+      this.stopPhysicsLoop();
+
+      const messages = advanceTurn(this.state);
+      for (const m of messages) this.broadcastAll(m);
+
+      if (this.state.phase === "playing") {
+        this.shotsFiredThisTurn = 0;
+        this.startPhysicsLoop();
+        this.room.storage.setAlarm(
+          Date.now() + this.state.turnTimeRemaining * 1000,
+        );
+        this.checkCpuTurn();
+      }
+    }, 1500);
+  }
+
   private handleInitGame(
     payload: GameInitPayload,
     conn: Party.Connection,
@@ -380,6 +413,13 @@ export default class GameServer implements Party.Server {
     try {
       this.state = initializeGame(payload);
       this.invalidateBitmapCache();
+
+      // Mark CPU players as connected
+      for (const player of this.state.players) {
+        if (this.isCpuPlayer(player.id)) {
+          player.isConnected = true;
+        }
+      }
 
       for (const pending of this.pendingJoins) {
         this.handleJoinGame(pending.playerId, pending.conn);
@@ -437,6 +477,7 @@ export default class GameServer implements Party.Server {
       this.room.storage.setAlarm(
         Date.now() + this.state.turnTimeRemaining * 1000,
       );
+      this.checkCpuTurn();
     }
   }
 
@@ -586,6 +627,7 @@ export default class GameServer implements Party.Server {
       this.room.storage.setAlarm(
         Date.now() + this.state.turnTimeRemaining * 1000,
       );
+      this.checkCpuTurn();
     }
   }
 

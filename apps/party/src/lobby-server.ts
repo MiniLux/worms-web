@@ -216,11 +216,11 @@ export default class LobbyServer implements Party.Server {
       return;
     }
 
-    if (this.state.players.length < 2) {
+    if (this.state.players.length < 1) {
       conn.send(
         JSON.stringify({
           type: "ERROR",
-          message: "Need at least 2 players",
+          message: "Need at least 1 player",
         } satisfies LobbyServerMessage),
       );
       return;
@@ -239,13 +239,30 @@ export default class LobbyServer implements Party.Server {
 
     // Initialize game party
     const gameId = this.state.code;
+    const gamePlayers = this.state.players.map((p) => ({
+      id: p.id,
+      displayName: p.displayName,
+      avatarUrl: p.avatarUrl,
+      teamColor: p.teamColor,
+    }));
+
+    // Solo mode: add a CPU dummy opponent so there's something to shoot at
+    if (gamePlayers.length === 1) {
+      const usedColors = new Set(gamePlayers.map((p) => p.teamColor));
+      const cpuColor =
+        (["blue", "red", "green", "yellow"] as const).find(
+          (c) => !usedColors.has(c),
+        ) ?? "blue";
+      gamePlayers.push({
+        id: "cpu-opponent",
+        displayName: "CPU",
+        avatarUrl: "",
+        teamColor: cpuColor,
+      });
+    }
+
     const initPayload: GameInitPayload = {
-      players: this.state.players.map((p) => ({
-        id: p.id,
-        displayName: p.displayName,
-        avatarUrl: p.avatarUrl,
-        teamColor: p.teamColor,
-      })),
+      players: gamePlayers,
       config: this.state.config,
     };
 

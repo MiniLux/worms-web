@@ -119,7 +119,7 @@ export function LobbyRoom({
   const myPlayer = lobby?.players.find((p) => p.id === playerId);
   const isHost = lobby?.hostId === playerId;
   const allReady =
-    lobby && lobby.players.length >= 2 && lobby.players.every((p) => p.isReady);
+    lobby && lobby.players.length >= 1 && lobby.players.every((p) => p.isReady);
 
   const copyCode = () => {
     navigator.clipboard.writeText(code);
@@ -192,9 +192,9 @@ export function LobbyRoom({
               </span>
             </div>
           ))}
-          {(!lobby || lobby.players.length < 2) && (
+          {(!lobby || lobby.players.length < 1) && (
             <p className="text-gray-500 text-sm text-center py-3">
-              Waiting for more players...
+              Waiting for players...
             </p>
           )}
         </div>
