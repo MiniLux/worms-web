@@ -39,7 +39,15 @@ export class GameScene extends Phaser.Scene {
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
 
   // Projectile animation
-  private projectileGraphic: Phaser.GameObjects.Arc | null = null;
+  private projectileSprite: Phaser.GameObjects.Sprite | null = null;
+  private projectileFallback: Phaser.GameObjects.Arc | null = null;
+
+  // Teleport cursor
+  private teleportCursor: Phaser.GameObjects.Sprite | null = null;
+
+  // Wind particles
+  private windParticles: Phaser.GameObjects.Sprite[] = [];
+  private currentWind: number = 0;
 
   constructor() {
     super({ key: "GameScene" });
@@ -49,25 +57,29 @@ export class GameScene extends Phaser.Scene {
 
   preload(): void {
     // Worm spritesheets — 60px wide vertical strips, 60x60 frames
-    const wormSprites: Record<string, { file: string; frames: number }> = {
-      worm_walk: { file: "wwalk.png", frames: 15 },
-      worm_jump: { file: "wjump.png", frames: 10 },
-      worm_backflip: { file: "wbackflp.png", frames: 22 },
-      worm_fall: { file: "wfall.png", frames: 2 },
-      worm_die: { file: "wdie.png", frames: 60 },
-      worm_breath: { file: "wbrth1.png", frames: 20 },
-      worm_blink: { file: "wblink1.png", frames: 6 },
-      worm_fly: { file: "wfly1.png", frames: 32 },
-      worm_baz: { file: "wbaz.png", frames: 32 },
-      worm_bazd: { file: "wbazd.png", frames: 32 },
-      worm_bazu: { file: "wbazu.png", frames: 32 },
-      worm_throw: { file: "wthrow.png", frames: 32 },
-      worm_throwd: { file: "wthrowd.png", frames: 32 },
-      worm_throwu: { file: "wthrowu.png", frames: 32 },
-      worm_shotf: { file: "wshotf.png", frames: 32 },
-      worm_shotfd: { file: "wshotfd.png", frames: 32 },
-      worm_shotfu: { file: "wshotfu.png", frames: 32 },
-      worm_falldn: { file: "wfalldn.png", frames: 2 },
+    const wormSprites: Record<string, { file: string }> = {
+      worm_walk: { file: "wwalk.png" },
+      worm_jump: { file: "wjump.png" },
+      worm_backflip: { file: "wbackflp.png" },
+      worm_fall: { file: "wfall.png" },
+      worm_die: { file: "wdie.png" },
+      worm_breath: { file: "wbrth1.png" },
+      worm_blink: { file: "wblink1.png" },
+      worm_fly: { file: "wfly1.png" },
+      worm_baz: { file: "wbaz.png" },
+      worm_bazd: { file: "wbazd.png" },
+      worm_bazu: { file: "wbazu.png" },
+      worm_throw: { file: "wthrow.png" },
+      worm_throwd: { file: "wthrowd.png" },
+      worm_throwu: { file: "wthrowu.png" },
+      worm_shotf: { file: "wshotf.png" },
+      worm_shotfd: { file: "wshotfd.png" },
+      worm_shotfu: { file: "wshotfu.png" },
+      worm_falldn: { file: "wfalldn.png" },
+      // Fire punch sprites
+      worm_japbak: { file: "wjapbak.png" },
+      worm_fist: { file: "wfist.png" },
+      worm_firblast: { file: "wfirbl1.png" },
     };
 
     for (const [key, info] of Object.entries(wormSprites)) {
@@ -90,8 +102,16 @@ export class GameScene extends Phaser.Scene {
       frameWidth: 60,
       frameHeight: 60,
     });
+    this.load.spritesheet("fx_feather", "/sprites/effects/feather.png", {
+      frameWidth: 60,
+      frameHeight: 60,
+    });
 
     // Projectiles
+    this.load.spritesheet("proj_missile", "/sprites/weapons/missile.png", {
+      frameWidth: 60,
+      frameHeight: 60,
+    });
     this.load.spritesheet("proj_grenade", "/sprites/weapons/grenade.png", {
       frameWidth: 60,
       frameHeight: 60,
@@ -113,6 +133,24 @@ export class GameScene extends Phaser.Scene {
       frameHeight: 60,
     });
 
+    // Teleport cursors
+    this.load.spritesheet("cursor_red", "/sprites/misc/cursorr.png", {
+      frameWidth: 60,
+      frameHeight: 60,
+    });
+    this.load.spritesheet("cursor_blue", "/sprites/misc/cursorb.png", {
+      frameWidth: 60,
+      frameHeight: 60,
+    });
+    this.load.spritesheet("cursor_green", "/sprites/misc/cursorg.png", {
+      frameWidth: 60,
+      frameHeight: 60,
+    });
+    this.load.spritesheet("cursor_yellow", "/sprites/misc/cursory.png", {
+      frameWidth: 60,
+      frameHeight: 60,
+    });
+
     // Weapon icons (single 32x32 images)
     this.load.image("icon_bazooka", "/sprites/icons/bazooka.1.png");
     this.load.image("icon_shotgun", "/sprites/icons/shotgun.1.png");
@@ -128,7 +166,6 @@ export class GameScene extends Phaser.Scene {
     this.playerId = this.registry.get("playerId") as string;
     const partyHost = this.registry.get("partyHost") as string;
 
-    // Camera setup
     this.cameras.main.setBounds(
       -100,
       -100,
@@ -137,11 +174,11 @@ export class GameScene extends Phaser.Scene {
     );
     this.cameras.main.setZoom(1);
 
-    // Input
     this.cursors = this.input.keyboard!.createCursorKeys();
     this.setupInput();
+    this.createProjectileAnims();
+    this.createWindParticleAnims();
 
-    // Connect to game server
     this.socket = new PartySocket({
       host: partyHost,
       room: gameId,
@@ -149,7 +186,6 @@ export class GameScene extends Phaser.Scene {
     });
 
     this.socket.addEventListener("open", () => {
-      // Send INIT_GAME if we have the payload
       const initPayloadRaw = sessionStorage.getItem("gameInitPayload");
       if (initPayloadRaw) {
         try {
@@ -172,8 +208,55 @@ export class GameScene extends Phaser.Scene {
       this.events.emit("disconnected");
     });
 
-    // Launch HUD scene in parallel
     this.scene.launch("HUDScene");
+  }
+
+  private createProjectileAnims(): void {
+    if (
+      this.textures.exists("proj_missile") &&
+      !this.anims.exists("anim_missile")
+    ) {
+      this.anims.create({
+        key: "anim_missile",
+        frames: this.anims.generateFrameNumbers("proj_missile", {
+          start: 0,
+          end: 31,
+        }),
+        frameRate: 20,
+        repeat: -1,
+      });
+    }
+    if (
+      this.textures.exists("proj_grenade") &&
+      !this.anims.exists("anim_grenade")
+    ) {
+      this.anims.create({
+        key: "anim_grenade",
+        frames: this.anims.generateFrameNumbers("proj_grenade", {
+          start: 0,
+          end: 31,
+        }),
+        frameRate: 15,
+        repeat: -1,
+      });
+    }
+  }
+
+  private createWindParticleAnims(): void {
+    if (
+      this.textures.exists("fx_feather") &&
+      !this.anims.exists("anim_feather")
+    ) {
+      this.anims.create({
+        key: "anim_feather",
+        frames: this.anims.generateFrameNumbers("fx_feather", {
+          start: 0,
+          end: 73,
+        }),
+        frameRate: 12,
+        repeat: -1,
+      });
+    }
   }
 
   // ─── Input Setup ────────────────────────────────────────
@@ -182,6 +265,20 @@ export class GameScene extends Phaser.Scene {
     // Mouse move for aiming
     this.input.on("pointermove", (pointer: Phaser.Input.Pointer) => {
       if (!this.isMyTurn) return;
+
+      // Update teleport cursor position
+      if (this.selectedWeapon === "teleport" && this.teleportCursor) {
+        const worldPoint = this.cameras.main.getWorldPoint(
+          pointer.x,
+          pointer.y,
+        );
+        this.teleportCursor.setPosition(worldPoint.x, worldPoint.y);
+        return;
+      }
+
+      // Skip aim updates for fire punch (direction-only weapon)
+      if (this.selectedWeapon === "fire_punch") return;
+
       const activeWorm = this.getActiveWorm();
       if (!activeWorm) return;
 
@@ -194,9 +291,31 @@ export class GameScene extends Phaser.Scene {
       this.events.emit("aim_update", this.currentAimAngle);
     });
 
+    // Click for teleport
+    this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
+      if (!this.isMyTurn || !this.isAiming) return;
+      if (this.selectedWeapon === "teleport") {
+        const world = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
+        this.sendMessage({ type: "USE_TELEPORT", x: world.x, y: world.y });
+        this.isAiming = false;
+        this.hideTeleportCursor();
+      }
+    });
+
     // Spacebar: hold to charge power, release to fire
     this.input.keyboard!.on("keydown-SPACE", () => {
-      if (!this.isMyTurn || !this.isAiming || this.isCharging) return;
+      if (!this.isMyTurn || !this.isAiming) return;
+
+      // Teleport uses click, not spacebar
+      if (this.selectedWeapon === "teleport") return;
+
+      // Fire punch: instant fire on press, no charge
+      if (this.selectedWeapon === "fire_punch") {
+        this.firePunch();
+        return;
+      }
+
+      if (this.isCharging) return;
       this.isCharging = true;
       this.chargeStartTime = Date.now();
       this.currentPower = 0;
@@ -280,6 +399,124 @@ export class GameScene extends Phaser.Scene {
 
     // Update worm lerping
     this.wormEntities.forEach((entity) => entity.update());
+
+    // Update wind particles
+    this.updateWindParticles();
+  }
+
+  // ─── Wind Particles ─────────────────────────────────────
+
+  private spawnWindParticles(): void {
+    this.destroyWindParticles();
+    if (Math.abs(this.currentWind) < 5) return;
+    if (!this.textures.exists("fx_feather")) return;
+
+    const count = Math.min(
+      8,
+      Math.max(3, Math.floor(Math.abs(this.currentWind) / 15)),
+    );
+    const camBounds = this.cameras.main.worldView;
+
+    for (let i = 0; i < count; i++) {
+      const startX =
+        this.currentWind > 0
+          ? camBounds.left - 60 - Math.random() * 200
+          : camBounds.right + 60 + Math.random() * 200;
+      const startY = camBounds.top + Math.random() * camBounds.height;
+
+      const feather = this.add.sprite(startX, startY, "fx_feather", 0);
+      feather.setDepth(0.5);
+      feather.setScale(0.35);
+      feather.setAlpha(0.6);
+      if (this.anims.exists("anim_feather")) {
+        feather.play({
+          key: "anim_feather",
+          startFrame: Math.floor(Math.random() * 74),
+        });
+      }
+      if (this.currentWind < 0) feather.setFlipX(true);
+      this.windParticles.push(feather);
+    }
+  }
+
+  private updateWindParticles(): void {
+    if (this.windParticles.length === 0) return;
+
+    const speed = Math.abs(this.currentWind) * 1.5;
+    const dir = this.currentWind > 0 ? 1 : -1;
+    const dt = this.game.loop.delta / 1000;
+    const camBounds = this.cameras.main.worldView;
+
+    for (const feather of this.windParticles) {
+      feather.x += speed * dir * dt;
+      feather.y += Math.sin(feather.x * 0.01 + feather.y * 0.005) * 15 * dt;
+
+      // Wrap around when off-screen
+      if (dir > 0 && feather.x > camBounds.right + 80) {
+        feather.x = camBounds.left - 60;
+        feather.y = camBounds.top + Math.random() * camBounds.height;
+      } else if (dir < 0 && feather.x < camBounds.left - 80) {
+        feather.x = camBounds.right + 60;
+        feather.y = camBounds.top + Math.random() * camBounds.height;
+      }
+    }
+  }
+
+  private destroyWindParticles(): void {
+    for (const p of this.windParticles) p.destroy();
+    this.windParticles = [];
+  }
+
+  // ─── Teleport Cursor ───────────────────────────────────
+
+  private showTeleportCursor(): void {
+    this.hideTeleportCursor();
+
+    // Pick cursor by team color
+    const myPlayer = this.gameState?.players.find(
+      (p) => p.id === this.playerId,
+    );
+    const colorKey = myPlayer?.teamColor ?? "red";
+    const cursorTextureMap: Record<string, string> = {
+      red: "cursor_red",
+      blue: "cursor_blue",
+      green: "cursor_green",
+      yellow: "cursor_yellow",
+    };
+    const textureKey = cursorTextureMap[colorKey] ?? "cursor_red";
+
+    if (!this.textures.exists(textureKey)) return;
+
+    const pointer = this.input.activePointer;
+    const worldPoint = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
+    this.teleportCursor = this.add.sprite(
+      worldPoint.x,
+      worldPoint.y,
+      textureKey,
+      0,
+    );
+    this.teleportCursor.setDepth(10);
+    this.teleportCursor.setScale(0.8);
+
+    // Animate cursor
+    const animKey = `anim_${textureKey}`;
+    if (!this.anims.exists(animKey)) {
+      this.anims.create({
+        key: animKey,
+        frames: this.anims.generateFrameNumbers(textureKey, {
+          start: 0,
+          end: 31,
+        }),
+        frameRate: 10,
+        repeat: -1,
+      });
+    }
+    this.teleportCursor.play(animKey);
+  }
+
+  private hideTeleportCursor(): void {
+    this.teleportCursor?.destroy();
+    this.teleportCursor = null;
   }
 
   // ─── Network ────────────────────────────────────────────
@@ -327,6 +564,7 @@ export class GameScene extends Phaser.Scene {
         this.isAiming = false;
         this.isCharging = false;
         this.getActiveWorm()?.hideAimLine();
+        this.hideTeleportCursor();
         break;
       case "TURN_END":
         this.isMyTurn = false;
@@ -334,6 +572,7 @@ export class GameScene extends Phaser.Scene {
         this.isCharging = false;
         this.isMovingLeft = false;
         this.isMovingRight = false;
+        this.hideTeleportCursor();
         break;
       case "GAME_OVER":
         this.events.emit("game_over", msg);
@@ -381,6 +620,10 @@ export class GameScene extends Phaser.Scene {
 
     this.scene.get("HUDScene").events.emit("state_sync", state);
     this.isMyTurn = state.activePlayerId === this.playerId;
+
+    // Set initial wind particles
+    this.currentWind = state.wind;
+    this.spawnWindParticles();
   }
 
   private onTurnStart(msg: {
@@ -398,12 +641,18 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.isMyTurn = msg.activePlayerId === this.playerId;
-    this.isAiming = this.isMyTurn; // Aiming starts immediately on your turn
+    this.isAiming = this.isMyTurn;
     this.isCharging = false;
     this.currentPower = 0;
     this.selectedWeapon = "bazooka";
     this.isMovingLeft = false;
     this.isMovingRight = false;
+    this.hideTeleportCursor();
+
+    // Set weapon hold on active worm
+    if (this.isMyTurn && wormEntity) {
+      wormEntity.setWeaponHold("bazooka");
+    }
 
     if (this.gameState) {
       this.gameState.activePlayerId = msg.activePlayerId;
@@ -411,6 +660,10 @@ export class GameScene extends Phaser.Scene {
       this.gameState.wind = msg.wind;
       this.gameState.turnTimeRemaining = msg.turnTime;
     }
+
+    // Update wind
+    this.currentWind = msg.wind;
+    this.spawnWindParticles();
 
     this.scene.get("HUDScene").events.emit("turn_start", msg);
   }
@@ -503,7 +756,7 @@ export class GameScene extends Phaser.Scene {
     deaths: Array<{ wormId: string; cause: string }>;
   }): void {
     if (msg.trajectory.length > 0) {
-      this.animateProjectile(msg.trajectory, () => {
+      this.animateProjectile(msg.trajectory, msg.weaponId, () => {
         this.applyFireEffects(msg);
       });
     } else {
@@ -573,7 +826,6 @@ export class GameScene extends Phaser.Scene {
 
     this.applyFireEffects(msg);
 
-    // If more shots remain, allow aiming again
     if (msg.shotsRemaining > 0) {
       this.isAiming = true;
     }
@@ -605,6 +857,7 @@ export class GameScene extends Phaser.Scene {
     x: number;
     y: number;
   }): void {
+    this.hideTeleportCursor();
     const entity = this.wormEntities.get(msg.wormId);
     if (entity) {
       const oldFlash = this.add.circle(entity.x, entity.y, 15, 0xffffff, 0.8);
@@ -639,6 +892,7 @@ export class GameScene extends Phaser.Scene {
 
   private animateProjectile(
     trajectory: TrajectoryPoint[],
+    weaponId: WeaponId,
     onComplete: () => void,
   ): void {
     if (trajectory.length < 2) {
@@ -646,17 +900,45 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    this.projectileGraphic = this.add.circle(
-      trajectory[0].x,
-      trajectory[0].y,
-      4,
-      0xff6600,
-    );
-    this.projectileGraphic.setDepth(6);
+    // Create sprite or fallback circle for projectile
+    const useMissile =
+      weaponId === "bazooka" && this.textures.exists("proj_missile");
+    const useGrenade =
+      weaponId === "grenade" && this.textures.exists("proj_grenade");
+
+    if (useMissile) {
+      this.projectileSprite = this.add.sprite(
+        trajectory[0].x,
+        trajectory[0].y,
+        "proj_missile",
+        0,
+      );
+      this.projectileSprite.setDepth(6);
+      this.projectileSprite.setScale(0.6);
+    } else if (useGrenade) {
+      this.projectileSprite = this.add.sprite(
+        trajectory[0].x,
+        trajectory[0].y,
+        "proj_grenade",
+        0,
+      );
+      this.projectileSprite.setDepth(6);
+      this.projectileSprite.setScale(0.5);
+      if (this.anims.exists("anim_grenade")) {
+        this.projectileSprite.play("anim_grenade");
+      }
+    } else {
+      this.projectileFallback = this.add.circle(
+        trajectory[0].x,
+        trajectory[0].y,
+        4,
+        0xff6600,
+      );
+      this.projectileFallback.setDepth(6);
+    }
 
     let index = 0;
     const startTime = this.time.now;
-
     this.cameras.main.stopFollow();
 
     const updateEvent = this.time.addEvent({
@@ -674,9 +956,12 @@ export class GameScene extends Phaser.Scene {
 
         if (index >= trajectory.length - 1) {
           const last = trajectory[trajectory.length - 1];
-          this.projectileGraphic?.setPosition(last.x, last.y);
-          this.projectileGraphic?.destroy();
-          this.projectileGraphic = null;
+          this.projectileSprite?.setPosition(last.x, last.y);
+          this.projectileFallback?.setPosition(last.x, last.y);
+          this.projectileSprite?.destroy();
+          this.projectileFallback?.destroy();
+          this.projectileSprite = null;
+          this.projectileFallback = null;
           updateEvent.destroy();
           onComplete();
           return;
@@ -691,7 +976,19 @@ export class GameScene extends Phaser.Scene {
         const x = a.x + (b.x - a.x) * t;
         const y = a.y + (b.y - a.y) * t;
 
-        this.projectileGraphic?.setPosition(x, y);
+        if (this.projectileSprite) {
+          this.projectileSprite.setPosition(x, y);
+          // Rotate missile to face direction of travel
+          if (useMissile) {
+            const dx = b.x - a.x;
+            const dy = b.y - a.y;
+            this.projectileSprite.setRotation(Math.atan2(dy, dx));
+          }
+        }
+        if (this.projectileFallback) {
+          this.projectileFallback.setPosition(x, y);
+        }
+
         this.cameras.main.centerOn(x, y);
       },
     });
@@ -703,26 +1000,12 @@ export class GameScene extends Phaser.Scene {
     this.isAiming = false;
     this.getActiveWorm()?.hideAimLine();
 
-    if (this.selectedWeapon === "teleport") {
-      const pointer = this.input.activePointer;
-      const world = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
-      this.sendMessage({ type: "USE_TELEPORT", x: world.x, y: world.y });
-    } else if (this.selectedWeapon === "fire_punch") {
-      const worm = this.getActiveWorm();
-      const direction =
-        worm && Math.cos(this.currentAimAngle) >= 0 ? "right" : "left";
-      this.sendMessage({
-        type: "FIRE_MELEE",
-        weaponId: this.selectedWeapon,
-        direction: direction as "left" | "right",
-      });
-    } else if (this.selectedWeapon === "shotgun") {
+    if (this.selectedWeapon === "shotgun") {
       this.sendMessage({
         type: "FIRE_HITSCAN",
         weaponId: this.selectedWeapon,
         angle: this.currentAimAngle,
       });
-      // Keep aiming for second shot — server will tell us via shotsRemaining
       this.isAiming = true;
     } else {
       this.sendMessage({
@@ -734,6 +1017,26 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  private firePunch(): void {
+    this.isAiming = false;
+    const worm = this.getActiveWorm();
+    const direction = worm?.facing ?? "right";
+
+    // Play punch animation, then send the message
+    if (worm) {
+      worm.playPunchAnim().then(() => {
+        // Animation done (or skipped if no sprite)
+      });
+    }
+
+    // Send melee immediately (server processes it; animation is cosmetic)
+    this.sendMessage({
+      type: "FIRE_MELEE",
+      weaponId: "fire_punch",
+      direction,
+    });
+  }
+
   // ─── Helpers ────────────────────────────────────────────
 
   private getActiveWorm(): WormEntity | undefined {
@@ -741,13 +1044,31 @@ export class GameScene extends Phaser.Scene {
     return this.wormEntities.get(this.gameState.activeWormId);
   }
 
-  /** Called from HUD when player selects a weapon */
   selectWeapon(weaponId: WeaponId): void {
     this.selectedWeapon = weaponId;
     this.isAiming = true;
     this.currentPower = 0;
     this.sendMessage({ type: "SELECT_WEAPON", weaponId });
     this.events.emit("weapon_selected", weaponId);
+
+    // Set weapon hold animation on active worm
+    const worm = this.getActiveWorm();
+    if (worm) {
+      worm.setWeaponHold(weaponId);
+    }
+
+    // Teleport: show cursor, hide aim line
+    if (weaponId === "teleport") {
+      worm?.hideAimLine();
+      this.showTeleportCursor();
+    } else {
+      this.hideTeleportCursor();
+    }
+
+    // Fire punch: hide aim line (direction only)
+    if (weaponId === "fire_punch") {
+      worm?.hideAimLine();
+    }
   }
 
   shutdown(): void {
@@ -755,6 +1076,9 @@ export class GameScene extends Phaser.Scene {
     this.terrainRenderer?.destroy();
     this.wormEntities.forEach((w) => w.destroy());
     this.wormEntities.clear();
-    this.projectileGraphic?.destroy();
+    this.projectileSprite?.destroy();
+    this.projectileFallback?.destroy();
+    this.hideTeleportCursor();
+    this.destroyWindParticles();
   }
 }

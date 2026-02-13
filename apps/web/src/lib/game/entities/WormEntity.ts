@@ -1,5 +1,5 @@
 import * as Phaser from "phaser";
-import type { WormState, TeamColor } from "@worms/shared";
+import type { WormState, TeamColor, WeaponId } from "@worms/shared";
 
 const COLOR_MAP: Record<TeamColor, number> = {
   red: 0xef4444,
@@ -8,7 +8,13 @@ const COLOR_MAP: Record<TeamColor, number> = {
   yellow: 0xeab308,
 };
 
-// Check if a spritesheet texture exists and has frames
+const COLOR_HEX: Record<TeamColor, string> = {
+  red: "#ef4444",
+  blue: "#3b82f6",
+  green: "#22c55e",
+  yellow: "#eab308",
+};
+
 function hasSpritesheet(scene: Phaser.Scene, key: string): boolean {
   return scene.textures.exists(key) && key !== "__MISSING";
 }
@@ -26,6 +32,8 @@ export class WormEntity {
   private isWalking: boolean = false;
   private usesSprites: boolean = false;
   private isDead: boolean = false;
+  private holdingWeapon: WeaponId | null = null;
+  private overrideAnim: string | null = null;
 
   constructor(
     private scene: Phaser.Scene,
@@ -38,7 +46,6 @@ export class WormEntity {
 
     const color = COLOR_MAP[teamColor] ?? 0xffffff;
 
-    // Try to use sprite; fall back to ellipse if sprites aren't loaded
     this.usesSprites = hasSpritesheet(scene, "worm_breath");
 
     if (this.usesSprites) {
@@ -50,11 +57,10 @@ export class WormEntity {
         0,
       );
       this.sprite.setDepth(3);
-      this.sprite.setTint(color);
+      // No tint — sprites have proper transparency now
       this.sprite.setFlipX(initialState.facing === "left");
       this.playAnimation("worm_idle");
     } else {
-      // Fallback: colored ellipse
       this.fallbackBody = scene.add.ellipse(
         initialState.x,
         initialState.y,
@@ -65,7 +71,7 @@ export class WormEntity {
       this.fallbackBody.setDepth(3);
     }
 
-    // Name label
+    // Name label colored by team
     this.nameText = scene.add.text(
       initialState.x,
       initialState.y - 28,
@@ -73,7 +79,7 @@ export class WormEntity {
       {
         fontSize: "10px",
         fontFamily: "monospace",
-        color: "#ffffff",
+        color: COLOR_HEX[teamColor] ?? "#ffffff",
         stroke: "#000000",
         strokeThickness: 2,
       },
@@ -81,19 +87,16 @@ export class WormEntity {
     this.nameText.setOrigin(0.5, 1);
     this.nameText.setDepth(4);
 
-    // HP bar
     this.hpBar = scene.add.graphics();
     this.hpBar.setDepth(4);
     this.drawHpBar();
 
-    // Aim line (hidden by default)
     this.aimLine = scene.add.graphics();
     this.aimLine.setDepth(5);
     this.aimLine.setVisible(false);
   }
 
   private createAnimations(): void {
-    // Only create once globally
     if (this.scene.anims.exists("worm_idle")) return;
 
     const defs: Array<{
@@ -107,7 +110,7 @@ export class WormEntity {
         key: "worm_idle",
         texture: "worm_breath",
         end: 19,
-        rate: 10,
+        rate: 7,
         repeat: -1,
       },
       { key: "worm_walk", texture: "worm_walk", end: 14, rate: 15, repeat: -1 },
@@ -153,7 +156,7 @@ export class WormEntity {
         rate: 10,
         repeat: 0,
       },
-      // Weapon hold — just show first frame
+      // Weapon hold poses (first frame only)
       { key: "worm_baz_hold", texture: "worm_baz", end: 0, rate: 1, repeat: 0 },
       {
         key: "worm_throw_hold",
@@ -167,6 +170,22 @@ export class WormEntity {
         texture: "worm_shotf",
         end: 0,
         rate: 1,
+        repeat: 0,
+      },
+      // Fire punch: bandana idle, fist punch, fire blast
+      {
+        key: "worm_japbak",
+        texture: "worm_japbak",
+        end: 8,
+        rate: 7,
+        repeat: -1,
+      },
+      { key: "worm_fist", texture: "worm_fist", end: 16, rate: 24, repeat: 0 },
+      {
+        key: "worm_firblast",
+        texture: "worm_firblast",
+        end: 23,
+        rate: 30,
         repeat: 0,
       },
     ];
@@ -197,17 +216,24 @@ export class WormEntity {
     return this.sprite?.y ?? this.fallbackBody?.y ?? this.state.y;
   }
 
+  get facing(): "left" | "right" {
+    return this.state.facing;
+  }
+
   updateState(newState: Partial<WormState>): void {
     Object.assign(this.state, newState);
     if (newState.x !== undefined) this.targetX = newState.x;
     if (newState.y !== undefined) this.targetY = newState.y;
+
+    // Update facing from explicit field OR from velocity direction
     if (newState.facing !== undefined) {
-      if (this.sprite) {
-        this.sprite.setFlipX(newState.facing === "left");
-      } else if (this.fallbackBody) {
-        this.fallbackBody.setScale(newState.facing === "left" ? -1 : 1, 1);
-      }
+      this.applyFacing(newState.facing);
+    } else if (newState.vx !== undefined && Math.abs(newState.vx) > 5) {
+      const inferred = newState.vx > 0 ? "right" : "left";
+      this.state.facing = inferred;
+      this.applyFacing(inferred);
     }
+
     if (newState.health !== undefined) {
       this.drawHpBar();
     }
@@ -215,10 +241,17 @@ export class WormEntity {
       this.die();
     }
 
-    // Determine walking state from velocity
     if (newState.vx !== undefined) {
       this.isWalking =
         Math.abs(this.state.vx) > 1 && Math.abs(this.state.vy) < 5;
+    }
+  }
+
+  private applyFacing(facing: "left" | "right"): void {
+    if (this.sprite) {
+      this.sprite.setFlipX(facing === "left");
+    } else if (this.fallbackBody) {
+      this.fallbackBody.setScale(facing === "left" ? -1 : 1, 1);
     }
   }
 
@@ -233,7 +266,37 @@ export class WormEntity {
     }
     if (!active) {
       this.hideAimLine();
+      this.holdingWeapon = null;
+      this.overrideAnim = null;
     }
+  }
+
+  /** Set weapon hold pose for the active worm */
+  setWeaponHold(weaponId: WeaponId | null): void {
+    this.holdingWeapon = weaponId;
+    if (weaponId === "fire_punch") {
+      this.overrideAnim = "worm_japbak";
+    } else {
+      this.overrideAnim = null;
+    }
+  }
+
+  /** Play the punch animation, returns a promise that resolves when done */
+  playPunchAnim(): Promise<void> {
+    return new Promise((resolve) => {
+      if (!this.sprite || !this.scene.anims.exists("worm_fist")) {
+        resolve();
+        return;
+      }
+      this.overrideAnim = "worm_fist";
+      this.currentAnim = "";
+      this.sprite.play("worm_fist");
+      this.sprite.once("animationcomplete", () => {
+        this.overrideAnim = "worm_japbak";
+        this.currentAnim = "";
+        resolve();
+      });
+    });
   }
 
   showAimLine(angle: number, power: number): void {
@@ -247,7 +310,6 @@ export class WormEntity {
     this.aimLine.lineStyle(2, 0xffff00, 0.8);
     this.aimLine.lineBetween(this.x, this.y, endX, endY);
 
-    // Crosshair at end
     const ch = 6;
     this.aimLine.lineStyle(1, 0xff0000, 1);
     this.aimLine.lineBetween(endX - ch, endY, endX + ch, endY);
@@ -262,7 +324,6 @@ export class WormEntity {
   update(): void {
     if (this.isDead) return;
 
-    // Lerp toward target position
     const lerp = 0.2;
     const curX = this.x;
     const curY = this.y;
@@ -277,16 +338,16 @@ export class WormEntity {
       this.fallbackBody.y = newY;
     }
 
-    // Update attached elements
     this.nameText.setPosition(newX, newY - 28);
     this.drawHpBar();
-
-    // Update animation state
     this.updateAnimationState();
   }
 
   private updateAnimationState(): void {
     if (!this.usesSprites || !this.sprite || this.isDead) return;
+
+    // Override animation (e.g. punch anim playing)
+    if (this.overrideAnim === "worm_fist") return; // let it finish
 
     // Flying from knockback
     if (Math.abs(this.state.vx) > 10 || this.state.vy < -20) {
@@ -306,8 +367,35 @@ export class WormEntity {
       return;
     }
 
-    // Default idle
+    // Override idle with weapon-specific pose
+    if (this.overrideAnim) {
+      this.playAnimation(this.overrideAnim);
+      return;
+    }
+
+    // Weapon hold poses (only when idle on ground)
+    if (this.state.isActive && this.holdingWeapon) {
+      const holdAnim = this.getWeaponHoldAnim(this.holdingWeapon);
+      if (holdAnim) {
+        this.playAnimation(holdAnim);
+        return;
+      }
+    }
+
     this.playAnimation("worm_idle");
+  }
+
+  private getWeaponHoldAnim(weaponId: WeaponId): string | null {
+    switch (weaponId) {
+      case "bazooka":
+        return "worm_baz_hold";
+      case "grenade":
+        return "worm_throw_hold";
+      case "shotgun":
+        return "worm_shot_hold";
+      default:
+        return null;
+    }
   }
 
   private playAnimation(key: string): void {
@@ -318,12 +406,11 @@ export class WormEntity {
   }
 
   flashDamage(damage: number): void {
-    // Flash red
     if (this.sprite) {
       this.sprite.setTint(0xff0000);
       this.scene.time.delayedCall(200, () => {
         if (this.state.isAlive && this.sprite) {
-          this.sprite.setTint(COLOR_MAP[this.teamColor] ?? 0xffffff);
+          this.sprite.clearTint();
         }
       });
     } else if (this.fallbackBody) {
@@ -335,7 +422,6 @@ export class WormEntity {
       });
     }
 
-    // Show damage number
     const dmgText = this.scene.add.text(this.x, this.y - 35, `-${damage}`, {
       fontSize: "14px",
       fontFamily: "monospace",
@@ -372,7 +458,6 @@ export class WormEntity {
         this.showGrave();
       });
     } else {
-      // Fallback
       if (this.fallbackBody) {
         this.fallbackBody.setFillStyle(0x666666);
         this.fallbackBody.setAlpha(0.5);
@@ -422,6 +507,11 @@ export class WormEntity {
     const color = pct > 0.5 ? 0x22c55e : pct > 0.25 ? 0xeab308 : 0xef4444;
     this.hpBar.fillStyle(color, 1);
     this.hpBar.fillRect(x, y, barWidth * pct, barHeight);
+
+    // Team color indicator bar (thin stripe under HP bar)
+    const teamColor = COLOR_MAP[this.teamColor] ?? 0xffffff;
+    this.hpBar.fillStyle(teamColor, 1);
+    this.hpBar.fillRect(x, y + barHeight + 1, barWidth, 2);
   }
 
   destroy(): void {

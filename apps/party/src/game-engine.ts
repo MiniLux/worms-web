@@ -270,6 +270,9 @@ export function processJump(
   const worm = findWorm(state, state.activeWormId);
   if (!worm || !worm.isAlive) return [];
 
+  // Only allow jump if worm is on the ground (not airborne or being knocked back)
+  if (Math.abs(worm.vy) > 5 || Math.abs(worm.vx) > 10) return [];
+
   let vx: number;
   let vy: number;
 
