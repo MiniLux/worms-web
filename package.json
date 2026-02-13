@@ -1,0 +1,16 @@
+{
+  "name": "worms-web",
+  "private": true,
+  "packageManager": "pnpm@10.29.3",
+  "scripts": {
+    "dev": "turbo dev",
+    "build": "turbo build",
+    "type-check": "turbo type-check",
+    "test": "turbo test",
+    "clean": "turbo clean"
+  },
+  "devDependencies": {
+    "turbo": "^2.3.0",
+    "typescript": "^5.7.0"
+  }
+}

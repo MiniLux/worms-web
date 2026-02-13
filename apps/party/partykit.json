@@ -1,0 +1,9 @@
+{
+  "name": "worms-party",
+  "main": "src/server.ts",
+  "parties": {
+    "lobby": "src/lobby-server.ts",
+    "game": "src/server.ts"
+  },
+  "compatibilityDate": "2024-09-01"
+}

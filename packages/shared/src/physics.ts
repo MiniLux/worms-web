@@ -1,0 +1,369 @@
+import {
+  TERRAIN_WIDTH,
+  TERRAIN_HEIGHT,
+  WATER_LEVEL,
+  GRAVITY,
+  PHYSICS_STEP_MS,
+  MAX_TRAJECTORY_STEPS,
+  FALL_DAMAGE_THRESHOLD,
+  FALL_DAMAGE_PER_PIXEL,
+  FIRE_POWER_MULTIPLIER,
+} from "./constants";
+import type { TrajectoryPoint } from "./types";
+
+// ─── Bitmap Helpers ─────────────────────────────────────
+
+const BITMAP_ROW_BYTES = Math.ceil(TERRAIN_WIDTH / 8);
+
+/** Decode a base64 bitmap string to Uint8Array */
+export function decodeBitmap(base64: string): Uint8Array {
+  if (typeof atob === "function") {
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    return bytes;
+  }
+  // Node.js
+  return new Uint8Array(Buffer.from(base64, "base64"));
+}
+
+/** Encode a Uint8Array bitmap to base64 */
+export function encodeBitmap(bitmap: Uint8Array): string {
+  if (typeof btoa === "function") {
+    let binary = "";
+    for (let i = 0; i < bitmap.length; i++) {
+      binary += String.fromCharCode(bitmap[i]);
+    }
+    return btoa(binary);
+  }
+  return Buffer.from(bitmap).toString("base64");
+}
+
+/** Check if a pixel is solid in the bitmap */
+export function getBitmapPixel(bitmap: Uint8Array, x: number, y: number): boolean {
+  if (x < 0 || x >= TERRAIN_WIDTH || y < 0 || y >= TERRAIN_HEIGHT) return false;
+  const byteIndex = y * BITMAP_ROW_BYTES + Math.floor(x / 8);
+  const bitIndex = 7 - (x % 8);
+  return ((bitmap[byteIndex] >> bitIndex) & 1) === 1;
+}
+
+/** Set a pixel in the bitmap */
+export function setBitmapPixel(bitmap: Uint8Array, x: number, y: number, solid: boolean): void {
+  if (x < 0 || x >= TERRAIN_WIDTH || y < 0 || y >= TERRAIN_HEIGHT) return;
+  const byteIndex = y * BITMAP_ROW_BYTES + Math.floor(x / 8);
+  const bitIndex = 7 - (x % 8);
+  if (solid) {
+    bitmap[byteIndex] |= 1 << bitIndex;
+  } else {
+    bitmap[byteIndex] &= ~(1 << bitIndex);
+  }
+}
+
+/** Erase a circle from the bitmap. Returns number of pixels erased. */
+export function eraseCircleFromBitmap(
+  bitmap: Uint8Array,
+  cx: number,
+  cy: number,
+  radius: number
+): number {
+  let erased = 0;
+  const r2 = radius * radius;
+  const minX = Math.max(0, Math.floor(cx - radius));
+  const maxX = Math.min(TERRAIN_WIDTH - 1, Math.ceil(cx + radius));
+  const minY = Math.max(0, Math.floor(cy - radius));
+  const maxY = Math.min(TERRAIN_HEIGHT - 1, Math.ceil(cy + radius));
+
+  for (let y = minY; y <= maxY; y++) {
+    for (let x = minX; x <= maxX; x++) {
+      const dx = x - cx;
+      const dy = y - cy;
+      if (dx * dx + dy * dy <= r2) {
+        if (getBitmapPixel(bitmap, x, y)) {
+          setBitmapPixel(bitmap, x, y, false);
+          erased++;
+        }
+      }
+    }
+  }
+  return erased;
+}
+
+// ─── Ballistic Simulation ───────────────────────────────
+
+export interface BallisticResult {
+  trajectory: TrajectoryPoint[];
+  impactX: number;
+  impactY: number;
+  impactTime: number;
+  hitType: "terrain" | "water" | "outofbounds" | "fuse";
+}
+
+/**
+ * Simulate a ballistic projectile trajectory deterministically.
+ * Returns the full trajectory and impact information.
+ */
+export function simulateBallistic(
+  startX: number,
+  startY: number,
+  angle: number,
+  power: number,
+  wind: number,
+  bitmap: Uint8Array,
+  fuseTimeMs: number = 0,
+  bounceElasticity: number = 0,
+  affectedByWind: boolean = true
+): BallisticResult {
+  const speed = power * FIRE_POWER_MULTIPLIER;
+  let vx = Math.cos(angle) * speed;
+  let vy = Math.sin(angle) * speed;
+  let x = startX;
+  let y = startY;
+  const dt = PHYSICS_STEP_MS / 1000;
+  const windForce = affectedByWind ? wind * 0.3 : 0;
+
+  const trajectory: TrajectoryPoint[] = [{ x, y, t: 0 }];
+
+  for (let step = 1; step <= MAX_TRAJECTORY_STEPS; step++) {
+    const t = step * PHYSICS_STEP_MS;
+
+    // Apply forces
+    vy += GRAVITY * dt;
+    vx += windForce * dt;
+
+    // Move
+    x += vx * dt;
+    y += vy * dt;
+
+    trajectory.push({ x: Math.round(x), y: Math.round(y), t });
+
+    // Check fuse
+    if (fuseTimeMs > 0 && t >= fuseTimeMs) {
+      return {
+        trajectory,
+        impactX: Math.round(x),
+        impactY: Math.round(y),
+        impactTime: t,
+        hitType: "fuse",
+      };
+    }
+
+    // Check water
+    if (y >= WATER_LEVEL) {
+      return {
+        trajectory,
+        impactX: Math.round(x),
+        impactY: WATER_LEVEL,
+        impactTime: t,
+        hitType: "water",
+      };
+    }
+
+    // Check out of bounds (sides and top)
+    if (x < -50 || x > TERRAIN_WIDTH + 50 || y < -200) {
+      return {
+        trajectory,
+        impactX: Math.round(x),
+        impactY: Math.round(y),
+        impactTime: t,
+        hitType: "outofbounds",
+      };
+    }
+
+    // Check terrain collision
+    if (
+      Math.round(x) >= 0 &&
+      Math.round(x) < TERRAIN_WIDTH &&
+      Math.round(y) >= 0 &&
+      Math.round(y) < TERRAIN_HEIGHT &&
+      getBitmapPixel(bitmap, Math.round(x), Math.round(y))
+    ) {
+      if (bounceElasticity > 0) {
+        // Simple bounce: reverse velocity component and reduce
+        // Check if collision is more horizontal or vertical
+        const prevX = trajectory[trajectory.length - 2]?.x ?? x;
+        const prevY = trajectory[trajectory.length - 2]?.y ?? y;
+
+        // Back up to previous position
+        x = prevX;
+        y = prevY;
+        trajectory[trajectory.length - 1] = { x: Math.round(x), y: Math.round(y), t };
+
+        // Reverse and dampen
+        vy = -vy * bounceElasticity;
+        vx = vx * bounceElasticity;
+
+        // If moving too slowly, stop
+        if (Math.abs(vx) < 5 && Math.abs(vy) < 5) {
+          return {
+            trajectory,
+            impactX: Math.round(x),
+            impactY: Math.round(y),
+            impactTime: t,
+            hitType: "terrain",
+          };
+        }
+        continue;
+      }
+
+      return {
+        trajectory,
+        impactX: Math.round(x),
+        impactY: Math.round(y),
+        impactTime: t,
+        hitType: "terrain",
+      };
+    }
+  }
+
+  // Max steps reached
+  return {
+    trajectory,
+    impactX: Math.round(x),
+    impactY: Math.round(y),
+    impactTime: MAX_TRAJECTORY_STEPS * PHYSICS_STEP_MS,
+    hitType: "outofbounds",
+  };
+}
+
+// ─── Hitscan ────────────────────────────────────────────
+
+export interface HitscanResult {
+  hitX: number;
+  hitY: number;
+  hitType: "terrain" | "worm" | "none";
+  hitWormId: string | null;
+  distance: number;
+}
+
+/**
+ * Cast a ray from (sx,sy) in direction angle.
+ * Check terrain bitmap and worm positions.
+ */
+export function raycast(
+  sx: number,
+  sy: number,
+  angle: number,
+  bitmap: Uint8Array,
+  worms: Array<{ id: string; x: number; y: number; width: number; height: number; alive: boolean }>,
+  maxDistance: number = 1500,
+  excludeWormId?: string
+): HitscanResult {
+  const dx = Math.cos(angle);
+  const dy = Math.sin(angle);
+  const step = 2; // pixels per step
+
+  for (let d = 0; d < maxDistance; d += step) {
+    const x = Math.round(sx + dx * d);
+    const y = Math.round(sy + dy * d);
+
+    // Out of bounds
+    if (x < 0 || x >= TERRAIN_WIDTH || y < 0 || y >= TERRAIN_HEIGHT) {
+      if (y >= WATER_LEVEL) {
+        return { hitX: x, hitY: y, hitType: "none", hitWormId: null, distance: d };
+      }
+      continue;
+    }
+
+    // Check worm hit
+    for (const worm of worms) {
+      if (!worm.alive || worm.id === excludeWormId) continue;
+      const hw = worm.width / 2;
+      const hh = worm.height / 2;
+      if (
+        x >= worm.x - hw &&
+        x <= worm.x + hw &&
+        y >= worm.y - hh &&
+        y <= worm.y + hh
+      ) {
+        return { hitX: x, hitY: y, hitType: "worm", hitWormId: worm.id, distance: d };
+      }
+    }
+
+    // Check terrain
+    if (getBitmapPixel(bitmap, x, y)) {
+      return { hitX: x, hitY: y, hitType: "terrain", hitWormId: null, distance: d };
+    }
+  }
+
+  return {
+    hitX: Math.round(sx + dx * maxDistance),
+    hitY: Math.round(sy + dy * maxDistance),
+    hitType: "none",
+    hitWormId: null,
+    distance: maxDistance,
+  };
+}
+
+// ─── Explosion Knockback ────────────────────────────────
+
+export interface KnockbackResult {
+  damage: number;
+  vx: number;
+  vy: number;
+}
+
+/**
+ * Compute damage and knockback for a worm from an explosion.
+ * Damage falls off linearly with distance from center.
+ */
+export function computeKnockback(
+  wormX: number,
+  wormY: number,
+  explosionX: number,
+  explosionY: number,
+  radius: number,
+  baseDamage: number,
+  knockbackMultiplier: number = 1.0
+): KnockbackResult {
+  const dx = wormX - explosionX;
+  const dy = wormY - explosionY;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+
+  if (dist > radius) {
+    return { damage: 0, vx: 0, vy: 0 };
+  }
+
+  // Linear falloff: full damage at center, 0 at edge
+  const falloff = 1 - dist / radius;
+  const damage = Math.round(baseDamage * falloff);
+
+  // Knockback direction: away from explosion center
+  const knockbackForce = 200 * falloff * knockbackMultiplier;
+  const angle = dist > 0 ? Math.atan2(dy, dx) : -Math.PI / 2; // straight up if at center
+  const vx = Math.cos(angle) * knockbackForce;
+  const vy = Math.sin(angle) * knockbackForce;
+
+  return { damage, vx, vy };
+}
+
+// ─── Fall Damage ────────────────────────────────────────
+
+/**
+ * Compute fall damage from vertical velocity at landing.
+ * Uses velocity as a proxy for fall distance.
+ */
+export function computeFallDamage(fallVelocity: number): number {
+  // fallVelocity is in px/s. Convert to approximate pixel distance.
+  // At gravity 300 px/s², velocity v implies fall of v²/(2*g) pixels
+  const fallPixels = (fallVelocity * fallVelocity) / (2 * GRAVITY);
+  if (fallPixels <= FALL_DAMAGE_THRESHOLD) return 0;
+  return Math.round((fallPixels - FALL_DAMAGE_THRESHOLD) * FALL_DAMAGE_PER_PIXEL);
+}
+
+// ─── Terrain Surface Finder ─────────────────────────────
+
+/**
+ * Find the Y coordinate of the terrain surface at a given X.
+ * Scans downward from top.
+ */
+export function findSurfaceY(bitmap: Uint8Array, x: number): number {
+  const col = Math.max(0, Math.min(TERRAIN_WIDTH - 1, Math.round(x)));
+  for (let y = 0; y < TERRAIN_HEIGHT; y++) {
+    if (getBitmapPixel(bitmap, col, y)) {
+      return y;
+    }
+  }
+  return WATER_LEVEL; // no terrain found, return water level
+}
