@@ -602,13 +602,9 @@ export default class GameServer implements Party.Server {
     const messages = processTeleport(this.state, x, y);
     for (const m of messages) this.broadcastAll(m);
 
-    // Teleport doesn't cause knockback, just enter retreat
-    this.state.phase = "retreat";
-    this.broadcastAll({
-      type: "RETREAT_START",
-      timeMs: DEFAULT_RETREAT_TIME * 1000,
-    });
-    this.room.storage.setAlarm(Date.now() + DEFAULT_RETREAT_TIME * 1000);
+    // Worm has a small vy so physics loop will drop it to the ground,
+    // then enter retreat once it settles
+    this.waitingForPhysicsSettle = true;
   }
 
   private handleSkipTurn(conn: Party.Connection): void {

@@ -288,6 +288,7 @@ export class GameScene extends Phaser.Scene {
         worldPoint.x - activeWorm.x,
       );
       activeWorm.showAimLine(this.currentAimAngle, this.currentPower);
+      activeWorm.setAimAngle(this.currentAimAngle);
       this.events.emit("aim_update", this.currentAimAngle);
     });
 
@@ -312,6 +313,12 @@ export class GameScene extends Phaser.Scene {
       // Fire punch: instant fire on press, no charge
       if (this.selectedWeapon === "fire_punch") {
         this.firePunch();
+        return;
+      }
+
+      // Shotgun: instant fire on press, no charge
+      if (this.selectedWeapon === "shotgun") {
+        this.fire();
         return;
       }
 
@@ -387,13 +394,14 @@ export class GameScene extends Phaser.Scene {
         this.sendMessage({ type: "MOVE_STOP" });
       }
 
-      // Update power bar while charging
+      // Update power while charging
       if (this.isCharging) {
         const elapsed = Date.now() - this.chargeStartTime;
         this.currentPower = Math.min(1, elapsed / this.CHARGE_DURATION_MS);
         this.events.emit("power_update", this.currentPower);
         const activeWorm = this.getActiveWorm();
         activeWorm?.showAimLine(this.currentAimAngle, this.currentPower);
+        activeWorm?.updatePowerGauge(this.currentPower);
       }
     }
 
@@ -564,6 +572,7 @@ export class GameScene extends Phaser.Scene {
         this.isAiming = false;
         this.isCharging = false;
         this.getActiveWorm()?.hideAimLine();
+        this.getActiveWorm()?.hidePowerGauge();
         this.hideTeleportCursor();
         break;
       case "TURN_END":
@@ -572,6 +581,7 @@ export class GameScene extends Phaser.Scene {
         this.isCharging = false;
         this.isMovingLeft = false;
         this.isMovingRight = false;
+        this.getActiveWorm()?.hidePowerGauge();
         this.hideTeleportCursor();
         break;
       case "GAME_OVER":
@@ -999,6 +1009,7 @@ export class GameScene extends Phaser.Scene {
   private fire(): void {
     this.isAiming = false;
     this.getActiveWorm()?.hideAimLine();
+    this.getActiveWorm()?.hidePowerGauge();
 
     if (this.selectedWeapon === "shotgun") {
       this.sendMessage({
@@ -1020,6 +1031,7 @@ export class GameScene extends Phaser.Scene {
   private firePunch(): void {
     this.isAiming = false;
     const worm = this.getActiveWorm();
+    worm?.hidePowerGauge();
     const direction = worm?.facing ?? "right";
 
     // Play punch animation, then send the message

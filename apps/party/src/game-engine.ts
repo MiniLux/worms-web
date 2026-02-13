@@ -583,9 +583,8 @@ export function processTeleport(
   worm.x = x;
   worm.y = y;
   worm.vx = 0;
-  worm.vy = 0;
-
-  // Teleport doesn't cause knockback, server handles retreat directly
+  // Give a tiny downward velocity so the physics loop drops the worm to the ground
+  worm.vy = 2;
 
   return [{ type: "TELEPORT_RESULT", wormId: worm.id, x, y }];
 }

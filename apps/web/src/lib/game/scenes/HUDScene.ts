@@ -59,20 +59,10 @@ export class HUDScene extends Phaser.Scene {
       })
       .setOrigin(0, 0);
 
-    // Power bar (bottom center, hidden by default)
+    // Power bar replaced by radial gauge on the worm (in GameScene)
     this.powerBar = this.add.graphics();
     this.powerBar.setVisible(false);
-
-    this.powerLabel = this.add
-      .text(width / 2, height - 75, "POWER", {
-        fontSize: "9px",
-        fontFamily: "monospace",
-        color: "#ffffff",
-        stroke: "#000000",
-        strokeThickness: 2,
-      })
-      .setOrigin(0.5, 1);
-    this.powerLabel.setVisible(false);
+    this.powerLabel = this.add.text(0, 0, "").setVisible(false);
 
     // Weapon bar (bottom)
     this.createWeaponBar();
@@ -145,25 +135,15 @@ export class HUDScene extends Phaser.Scene {
   }
 
   private onAimUpdate(_angle: number): void {
-    if (!this.showingPower) {
-      this.showingPower = true;
-      this.powerBar.setVisible(true);
-      this.powerLabel.setVisible(true);
-    }
-    this.drawPowerBar();
+    // Power gauge is now drawn in world-space on the worm (WormEntity)
   }
 
-  private onPowerUpdate(power: number): void {
-    this.currentPower = power;
-    this.drawPowerBar();
+  private onPowerUpdate(_power: number): void {
+    // Power gauge is now drawn in world-space on the worm (WormEntity)
   }
 
   private onChargeStart(): void {
-    this.showingPower = true;
-    this.currentPower = 0;
-    this.powerBar.setVisible(true);
-    this.powerLabel.setVisible(true);
-    this.drawPowerBar();
+    // Power gauge is now drawn in world-space on the worm (WormEntity)
   }
 
   private onWeaponSelected(_weaponId: WeaponId): void {
@@ -266,29 +246,7 @@ export class HUDScene extends Phaser.Scene {
     this.windText.setText(label);
   }
 
-  private drawPowerBar(): void {
-    const { width, height } = this.cameras.main;
-    this.powerBar.clear();
-
-    const bw = 200;
-    const bh = 14;
-    const bx = width / 2 - bw / 2;
-    const by = height - 60;
-
-    // Background
-    this.powerBar.fillStyle(0x000000, 0.7);
-    this.powerBar.fillRect(bx - 2, by - 2, bw + 4, bh + 4);
-
-    // Fill
-    const color =
-      this.currentPower < 0.4
-        ? 0x22cc44
-        : this.currentPower < 0.7
-          ? 0xffaa00
-          : 0xff2222;
-    this.powerBar.fillStyle(color, 1);
-    this.powerBar.fillRect(bx, by, bw * this.currentPower, bh);
-  }
+  // drawPowerBar removed — power gauge is now radial, drawn on the worm in GameScene
 
   private createWeaponBar(): void {
     const { width, height } = this.cameras.main;

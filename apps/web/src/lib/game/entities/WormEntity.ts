@@ -19,6 +19,28 @@ function hasSpritesheet(scene: Phaser.Scene, key: string): boolean {
   return scene.textures.exists(key) && key !== "__MISSING";
 }
 
+/**
+ * Weapon aim sprite config.
+ * Each weapon has 3 spritesheets: up (u), base (straight), down (d).
+ * Each sheet has 32 frames. Together they cover the full aim arc.
+ *
+ * In the original Worms, the aim angle goes from straight up (-PI/2)
+ * to straight down (+PI/2) in front of the worm. The 3 sheets split this
+ * into 3 zones of ~32 frames each = 96 total frames for the full arc.
+ *
+ * Up sheet:   frame 0 = straight up, frame 31 = ~30deg above horizontal
+ * Base sheet: frame 0 = ~30deg above horizontal, frame 31 = ~30deg below horizontal
+ * Down sheet: frame 0 = ~30deg below horizontal, frame 31 = straight down
+ */
+const WEAPON_AIM_SPRITES: Record<
+  string,
+  { u: string; base: string; d: string }
+> = {
+  bazooka: { u: "worm_bazu", base: "worm_baz", d: "worm_bazd" },
+  grenade: { u: "worm_throwu", base: "worm_throw", d: "worm_throwd" },
+  shotgun: { u: "worm_shotfu", base: "worm_shotf", d: "worm_shotfd" },
+};
+
 export class WormEntity {
   private sprite: Phaser.GameObjects.Sprite | null = null;
   private fallbackBody: Phaser.GameObjects.Ellipse | null = null;
@@ -34,6 +56,11 @@ export class WormEntity {
   private isDead: boolean = false;
   private holdingWeapon: WeaponId | null = null;
   private overrideAnim: string | null = null;
+  private aimAngle: number = 0;
+  private isShowingWeaponFrame: boolean = false;
+  private powerGauge: Phaser.GameObjects.Graphics;
+  private powerValue: number = 0;
+  private showPowerGauge: boolean = false;
 
   constructor(
     private scene: Phaser.Scene,
@@ -57,7 +84,6 @@ export class WormEntity {
         0,
       );
       this.sprite.setDepth(3);
-      // No tint — sprites have proper transparency now
       this.sprite.setFlipX(initialState.facing === "left");
       this.playAnimation("worm_idle");
     } else {
@@ -71,7 +97,6 @@ export class WormEntity {
       this.fallbackBody.setDepth(3);
     }
 
-    // Name label colored by team
     this.nameText = scene.add.text(
       initialState.x,
       initialState.y - 28,
@@ -94,6 +119,10 @@ export class WormEntity {
     this.aimLine = scene.add.graphics();
     this.aimLine.setDepth(5);
     this.aimLine.setVisible(false);
+
+    this.powerGauge = scene.add.graphics();
+    this.powerGauge.setDepth(5);
+    this.powerGauge.setVisible(false);
   }
 
   private createAnimations(): void {
@@ -156,23 +185,7 @@ export class WormEntity {
         rate: 10,
         repeat: 0,
       },
-      // Weapon hold poses (first frame only)
-      { key: "worm_baz_hold", texture: "worm_baz", end: 0, rate: 1, repeat: 0 },
-      {
-        key: "worm_throw_hold",
-        texture: "worm_throw",
-        end: 0,
-        rate: 1,
-        repeat: 0,
-      },
-      {
-        key: "worm_shot_hold",
-        texture: "worm_shotf",
-        end: 0,
-        rate: 1,
-        repeat: 0,
-      },
-      // Fire punch: bandana idle, fist punch, fire blast
+      // Fire punch
       {
         key: "worm_japbak",
         texture: "worm_japbak",
@@ -225,7 +238,6 @@ export class WormEntity {
     if (newState.x !== undefined) this.targetX = newState.x;
     if (newState.y !== undefined) this.targetY = newState.y;
 
-    // Update facing from explicit field OR from velocity direction
     if (newState.facing !== undefined) {
       this.applyFacing(newState.facing);
     } else if (newState.vx !== undefined && Math.abs(newState.vx) > 5) {
@@ -266,14 +278,16 @@ export class WormEntity {
     }
     if (!active) {
       this.hideAimLine();
+      this.hidePowerGauge();
       this.holdingWeapon = null;
       this.overrideAnim = null;
+      this.isShowingWeaponFrame = false;
     }
   }
 
-  /** Set weapon hold pose for the active worm */
   setWeaponHold(weaponId: WeaponId | null): void {
     this.holdingWeapon = weaponId;
+    this.isShowingWeaponFrame = false;
     if (weaponId === "fire_punch") {
       this.overrideAnim = "worm_japbak";
     } else {
@@ -281,7 +295,11 @@ export class WormEntity {
     }
   }
 
-  /** Play the punch animation, returns a promise that resolves when done */
+  /** Update the aim angle — used for weapon hold sprite frame selection */
+  setAimAngle(angle: number): void {
+    this.aimAngle = angle;
+  }
+
   playPunchAnim(): Promise<void> {
     return new Promise((resolve) => {
       if (!this.sprite || !this.scene.anims.exists("worm_fist")) {
@@ -290,6 +308,7 @@ export class WormEntity {
       }
       this.overrideAnim = "worm_fist";
       this.currentAnim = "";
+      this.isShowingWeaponFrame = false;
       this.sprite.play("worm_fist");
       this.sprite.once("animationcomplete", () => {
         this.overrideAnim = "worm_japbak";
@@ -321,6 +340,92 @@ export class WormEntity {
     this.aimLine.clear();
   }
 
+  /** Show and update the radial power gauge near the worm */
+  updatePowerGauge(power: number): void {
+    this.powerValue = power;
+    this.showPowerGauge = true;
+    this.powerGauge.setVisible(true);
+    this.drawPowerGauge();
+  }
+
+  hidePowerGauge(): void {
+    this.showPowerGauge = false;
+    this.powerGauge.setVisible(false);
+    this.powerGauge.clear();
+  }
+
+  /**
+   * Draw a Worms 2-style radial power gauge.
+   * It's a filled arc (pie slice) that sweeps clockwise from the top.
+   * Color goes from green (low) through yellow/orange to red (full).
+   */
+  private drawPowerGauge(): void {
+    this.powerGauge.clear();
+    if (!this.showPowerGauge || this.powerValue <= 0) return;
+
+    const cx = this.x;
+    const cy = this.y;
+    const outerR = 18;
+    const innerR = 8;
+    const startAngle = -Math.PI / 2; // 12 o'clock
+    const endAngle = startAngle + this.powerValue * Math.PI * 2;
+
+    // Background ring (dark, semi-transparent)
+    this.powerGauge.lineStyle(outerR - innerR, 0x000000, 0.3);
+    this.powerGauge.beginPath();
+    this.powerGauge.arc(cx, cy, (outerR + innerR) / 2, 0, Math.PI * 2);
+    this.powerGauge.strokePath();
+
+    // Filled arc segments with gradient coloring
+    const segments = 32;
+    const filledSegments = Math.ceil(this.powerValue * segments);
+    const segAngle = (Math.PI * 2) / segments;
+
+    for (let i = 0; i < filledSegments; i++) {
+      const segStart = startAngle + i * segAngle;
+      const segEnd = Math.min(segStart + segAngle, endAngle);
+      if (segStart >= endAngle) break;
+
+      // Color gradient: green → yellow → orange → red
+      const t = i / segments;
+      const color = this.getPowerColor(t);
+
+      this.powerGauge.lineStyle(outerR - innerR, color, 0.9);
+      this.powerGauge.beginPath();
+      this.powerGauge.arc(
+        cx,
+        cy,
+        (outerR + innerR) / 2,
+        segStart,
+        segEnd,
+        false,
+      );
+      this.powerGauge.strokePath();
+    }
+  }
+
+  private getPowerColor(t: number): number {
+    // green (0) → yellow (0.33) → orange (0.66) → red (1)
+    let r: number, g: number, b: number;
+    if (t < 0.33) {
+      const p = t / 0.33;
+      r = Math.round(0x22 + (0xff - 0x22) * p);
+      g = Math.round(0xcc + (0xcc - 0xcc) * p);
+      b = Math.round(0x44 * (1 - p));
+    } else if (t < 0.66) {
+      const p = (t - 0.33) / 0.33;
+      r = 0xff;
+      g = Math.round(0xcc - (0xcc - 0x66) * p);
+      b = 0x00;
+    } else {
+      const p = (t - 0.66) / 0.34;
+      r = 0xff;
+      g = Math.round(0x66 * (1 - p));
+      b = 0x00;
+    }
+    return (r << 16) | (g << 8) | b;
+  }
+
   update(): void {
     if (this.isDead) return;
 
@@ -340,6 +445,7 @@ export class WormEntity {
 
     this.nameText.setPosition(newX, newY - 28);
     this.drawHpBar();
+    if (this.showPowerGauge) this.drawPowerGauge();
     this.updateAnimationState();
   }
 
@@ -347,60 +453,125 @@ export class WormEntity {
     if (!this.usesSprites || !this.sprite || this.isDead) return;
 
     // Override animation (e.g. punch anim playing)
-    if (this.overrideAnim === "worm_fist") return; // let it finish
+    if (this.overrideAnim === "worm_fist") return;
 
     // Flying from knockback
     if (Math.abs(this.state.vx) > 10 || this.state.vy < -20) {
+      this.isShowingWeaponFrame = false;
       this.playAnimation("worm_fly_anim");
       return;
     }
 
     // Falling
     if (this.state.vy > 30) {
+      this.isShowingWeaponFrame = false;
       this.playAnimation("worm_fall_anim");
       return;
     }
 
     // Walking
     if (this.isWalking) {
+      this.isShowingWeaponFrame = false;
       this.playAnimation("worm_walk");
       return;
     }
 
-    // Override idle with weapon-specific pose
+    // Override idle (bandana for fire punch)
     if (this.overrideAnim) {
+      this.isShowingWeaponFrame = false;
       this.playAnimation(this.overrideAnim);
       return;
     }
 
-    // Weapon hold poses (only when idle on ground)
+    // Weapon aim pose: set texture + frame based on aim angle
     if (this.state.isActive && this.holdingWeapon) {
-      const holdAnim = this.getWeaponHoldAnim(this.holdingWeapon);
-      if (holdAnim) {
-        this.playAnimation(holdAnim);
+      const aimSprites = WEAPON_AIM_SPRITES[this.holdingWeapon];
+      if (aimSprites) {
+        this.applyWeaponAimFrame(aimSprites);
         return;
       }
     }
 
+    this.isShowingWeaponFrame = false;
     this.playAnimation("worm_idle");
   }
 
-  private getWeaponHoldAnim(weaponId: WeaponId): string | null {
-    switch (weaponId) {
-      case "bazooka":
-        return "worm_baz_hold";
-      case "grenade":
-        return "worm_throw_hold";
-      case "shotgun":
-        return "worm_shot_hold";
-      default:
-        return null;
+  /**
+   * Map the aim angle to the correct weapon spritesheet + frame.
+   *
+   * The angle is in radians from atan2(dy, dx). For a right-facing worm:
+   *   - Straight right = 0
+   *   - Straight up = -PI/2
+   *   - Straight down = +PI/2
+   *
+   * The 3 spritesheets (u, base, d) cover 96 frames total across the
+   * full arc from straight up (-PI/2) to straight down (+PI/2).
+   *
+   * When facing left, the sprite is flipped, but the vertical angle
+   * component stays the same. We normalize to a "vertical angle"
+   * where -PI/2 = up, 0 = horizontal, +PI/2 = down.
+   */
+  private applyWeaponAimFrame(sprites: {
+    u: string;
+    base: string;
+    d: string;
+  }): void {
+    if (!this.sprite) return;
+
+    // Convert atan2 angle to vertical angle relative to facing direction
+    // For right-facing: vertAngle = aimAngle (already correct)
+    // For left-facing: the aim line is mirrored, so vertAngle = PI - aimAngle
+    let vertAngle: number;
+    if (this.state.facing === "right") {
+      vertAngle = this.aimAngle;
+    } else {
+      vertAngle = Math.PI - this.aimAngle;
+      // Normalize to [-PI, PI]
+      if (vertAngle > Math.PI) vertAngle -= 2 * Math.PI;
+    }
+
+    // Clamp to [-PI/2, PI/2] (the valid aiming range in front of the worm)
+    vertAngle = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, vertAngle));
+
+    // Map from [-PI/2, PI/2] to [0, 95] (96 total frames across 3 sheets)
+    // -PI/2 = frame 0 (up), +PI/2 = frame 95 (down)
+    const t = (vertAngle + Math.PI / 2) / Math.PI; // 0..1
+    const globalFrame = Math.round(t * 95);
+
+    let textureKey: string;
+    let frame: number;
+
+    if (globalFrame < 32) {
+      // Up sheet: frames 0-31
+      textureKey = sprites.u;
+      frame = globalFrame;
+    } else if (globalFrame < 64) {
+      // Base sheet: frames 32-63 → 0-31
+      textureKey = sprites.base;
+      frame = globalFrame - 32;
+    } else {
+      // Down sheet: frames 64-95 → 0-31
+      textureKey = sprites.d;
+      frame = globalFrame - 64;
+    }
+
+    if (!hasSpritesheet(this.scene, textureKey)) return;
+
+    // Stop any playing animation and set the texture + frame directly
+    if (!this.isShowingWeaponFrame || this.sprite.texture.key !== textureKey) {
+      this.sprite.stop();
+      this.sprite.setTexture(textureKey, frame);
+      this.currentAnim = "";
+      this.isShowingWeaponFrame = true;
+    } else {
+      this.sprite.setFrame(frame);
     }
   }
 
   private playAnimation(key: string): void {
     if (!this.sprite || !this.scene.anims.exists(key)) return;
-    if (this.currentAnim === key) return;
+    if (this.currentAnim === key && !this.isShowingWeaponFrame) return;
+    this.isShowingWeaponFrame = false;
     this.currentAnim = key;
     this.sprite.play(key, true);
   }
@@ -498,17 +669,14 @@ export class WormEntity {
     const x = this.x - barWidth / 2;
     const y = this.y - 22;
 
-    // Background
     this.hpBar.fillStyle(0x000000, 0.7);
     this.hpBar.fillRect(x - 1, y - 1, barWidth + 2, barHeight + 2);
 
-    // Health fill
     const pct = Math.max(0, this.state.health / 100);
     const color = pct > 0.5 ? 0x22c55e : pct > 0.25 ? 0xeab308 : 0xef4444;
     this.hpBar.fillStyle(color, 1);
     this.hpBar.fillRect(x, y, barWidth * pct, barHeight);
 
-    // Team color indicator bar (thin stripe under HP bar)
     const teamColor = COLOR_MAP[this.teamColor] ?? 0xffffff;
     this.hpBar.fillStyle(teamColor, 1);
     this.hpBar.fillRect(x, y + barHeight + 1, barWidth, 2);
@@ -520,5 +688,6 @@ export class WormEntity {
     this.nameText.destroy();
     this.hpBar.destroy();
     this.aimLine.destroy();
+    this.powerGauge.destroy();
   }
 }
