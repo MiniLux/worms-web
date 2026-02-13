@@ -8,14 +8,24 @@ const COLOR_MAP: Record<TeamColor, number> = {
   yellow: 0xeab308,
 };
 
+// Check if a spritesheet texture exists and has frames
+function hasSpritesheet(scene: Phaser.Scene, key: string): boolean {
+  return scene.textures.exists(key) && key !== "__MISSING";
+}
+
 export class WormEntity {
-  private body: Phaser.GameObjects.Ellipse;
+  private sprite: Phaser.GameObjects.Sprite | null = null;
+  private fallbackBody: Phaser.GameObjects.Ellipse | null = null;
   private nameText: Phaser.GameObjects.Text;
   private hpBar: Phaser.GameObjects.Graphics;
   private aimLine: Phaser.GameObjects.Graphics;
   private state: WormState;
   private targetX: number;
   private targetY: number;
+  private currentAnim: string = "";
+  private isWalking: boolean = false;
+  private usesSprites: boolean = false;
+  private isDead: boolean = false;
 
   constructor(
     private scene: Phaser.Scene,
@@ -28,24 +38,37 @@ export class WormEntity {
 
     const color = COLOR_MAP[teamColor] ?? 0xffffff;
 
-    // Worm body (simple ellipse for now)
-    this.body = scene.add.ellipse(
-      initialState.x,
-      initialState.y,
-      20,
-      24,
-      color,
-    );
-    this.body.setDepth(3);
+    // Try to use sprite; fall back to ellipse if sprites aren't loaded
+    this.usesSprites = hasSpritesheet(scene, "worm_breath");
 
-    // Eyes
-    const eyeX = initialState.facing === "right" ? 4 : -4;
-    // Eyes are drawn as part of the body visual — we keep it simple
+    if (this.usesSprites) {
+      this.createAnimations();
+      this.sprite = scene.add.sprite(
+        initialState.x,
+        initialState.y,
+        "worm_breath",
+        0,
+      );
+      this.sprite.setDepth(3);
+      this.sprite.setTint(color);
+      this.sprite.setFlipX(initialState.facing === "left");
+      this.playAnimation("worm_idle");
+    } else {
+      // Fallback: colored ellipse
+      this.fallbackBody = scene.add.ellipse(
+        initialState.x,
+        initialState.y,
+        20,
+        24,
+        color,
+      );
+      this.fallbackBody.setDepth(3);
+    }
 
     // Name label
     this.nameText = scene.add.text(
       initialState.x,
-      initialState.y - 24,
+      initialState.y - 28,
       initialState.name,
       {
         fontSize: "10px",
@@ -69,16 +92,109 @@ export class WormEntity {
     this.aimLine.setVisible(false);
   }
 
+  private createAnimations(): void {
+    // Only create once globally
+    if (this.scene.anims.exists("worm_idle")) return;
+
+    const defs: Array<{
+      key: string;
+      texture: string;
+      end: number;
+      rate: number;
+      repeat: number;
+    }> = [
+      {
+        key: "worm_idle",
+        texture: "worm_breath",
+        end: 19,
+        rate: 10,
+        repeat: -1,
+      },
+      { key: "worm_walk", texture: "worm_walk", end: 14, rate: 15, repeat: -1 },
+      {
+        key: "worm_jump_anim",
+        texture: "worm_jump",
+        end: 9,
+        rate: 15,
+        repeat: 0,
+      },
+      {
+        key: "worm_backflip_anim",
+        texture: "worm_backflip",
+        end: 21,
+        rate: 20,
+        repeat: 0,
+      },
+      {
+        key: "worm_fall_anim",
+        texture: "worm_fall",
+        end: 1,
+        rate: 8,
+        repeat: -1,
+      },
+      {
+        key: "worm_die_anim",
+        texture: "worm_die",
+        end: 59,
+        rate: 30,
+        repeat: 0,
+      },
+      {
+        key: "worm_fly_anim",
+        texture: "worm_fly",
+        end: 31,
+        rate: 20,
+        repeat: -1,
+      },
+      {
+        key: "worm_blink_anim",
+        texture: "worm_blink",
+        end: 5,
+        rate: 10,
+        repeat: 0,
+      },
+      // Weapon hold — just show first frame
+      { key: "worm_baz_hold", texture: "worm_baz", end: 0, rate: 1, repeat: 0 },
+      {
+        key: "worm_throw_hold",
+        texture: "worm_throw",
+        end: 0,
+        rate: 1,
+        repeat: 0,
+      },
+      {
+        key: "worm_shot_hold",
+        texture: "worm_shotf",
+        end: 0,
+        rate: 1,
+        repeat: 0,
+      },
+    ];
+
+    for (const d of defs) {
+      if (!hasSpritesheet(this.scene, d.texture)) continue;
+      this.scene.anims.create({
+        key: d.key,
+        frames: this.scene.anims.generateFrameNumbers(d.texture, {
+          start: 0,
+          end: d.end,
+        }),
+        frameRate: d.rate,
+        repeat: d.repeat,
+      });
+    }
+  }
+
   get id(): string {
     return this.state.id;
   }
 
   get x(): number {
-    return this.body.x;
+    return this.sprite?.x ?? this.fallbackBody?.x ?? this.state.x;
   }
 
   get y(): number {
-    return this.body.y;
+    return this.sprite?.y ?? this.fallbackBody?.y ?? this.state.y;
   }
 
   updateState(newState: Partial<WormState>): void {
@@ -86,23 +202,36 @@ export class WormEntity {
     if (newState.x !== undefined) this.targetX = newState.x;
     if (newState.y !== undefined) this.targetY = newState.y;
     if (newState.facing !== undefined) {
-      this.body.setScale(newState.facing === "left" ? -1 : 1, 1);
+      if (this.sprite) {
+        this.sprite.setFlipX(newState.facing === "left");
+      } else if (this.fallbackBody) {
+        this.fallbackBody.setScale(newState.facing === "left" ? -1 : 1, 1);
+      }
     }
     if (newState.health !== undefined) {
       this.drawHpBar();
     }
-    if (newState.isAlive === false) {
+    if (newState.isAlive === false && !this.isDead) {
       this.die();
+    }
+
+    // Determine walking state from velocity
+    if (newState.vx !== undefined) {
+      this.isWalking =
+        Math.abs(this.state.vx) > 1 && Math.abs(this.state.vy) < 5;
     }
   }
 
   setActive(active: boolean): void {
     this.state.isActive = active;
-    if (active) {
-      // Highlight active worm
-      this.body.setStrokeStyle(2, 0xffffff);
-    } else {
-      this.body.setStrokeStyle(0);
+    if (this.fallbackBody) {
+      if (active) {
+        this.fallbackBody.setStrokeStyle(2, 0xffffff);
+      } else {
+        this.fallbackBody.setStrokeStyle(0);
+      }
+    }
+    if (!active) {
       this.hideAimLine();
     }
   }
@@ -112,13 +241,13 @@ export class WormEntity {
     this.aimLine.clear();
 
     const length = 40 + power * 80;
-    const endX = this.body.x + Math.cos(angle) * length;
-    const endY = this.body.y + Math.sin(angle) * length;
+    const endX = this.x + Math.cos(angle) * length;
+    const endY = this.y + Math.sin(angle) * length;
 
     this.aimLine.lineStyle(2, 0xffff00, 0.8);
-    this.aimLine.lineBetween(this.body.x, this.body.y, endX, endY);
+    this.aimLine.lineBetween(this.x, this.y, endX, endY);
 
-    // Draw crosshair at end
+    // Crosshair at end
     const ch = 6;
     this.aimLine.lineStyle(1, 0xff0000, 1);
     this.aimLine.lineBetween(endX - ch, endY, endX + ch, endY);
@@ -131,40 +260,90 @@ export class WormEntity {
   }
 
   update(): void {
-    // Lerp toward target position
-    const lerp = 0.15;
-    this.body.x += (this.targetX - this.body.x) * lerp;
-    this.body.y += (this.targetY - this.body.y) * lerp;
+    if (this.isDead) return;
 
-    // Update name and HP bar positions
-    this.nameText.setPosition(this.body.x, this.body.y - 24);
+    // Lerp toward target position
+    const lerp = 0.2;
+    const curX = this.x;
+    const curY = this.y;
+    const newX = curX + (this.targetX - curX) * lerp;
+    const newY = curY + (this.targetY - curY) * lerp;
+
+    if (this.sprite) {
+      this.sprite.x = newX;
+      this.sprite.y = newY;
+    } else if (this.fallbackBody) {
+      this.fallbackBody.x = newX;
+      this.fallbackBody.y = newY;
+    }
+
+    // Update attached elements
+    this.nameText.setPosition(newX, newY - 28);
     this.drawHpBar();
+
+    // Update animation state
+    this.updateAnimationState();
+  }
+
+  private updateAnimationState(): void {
+    if (!this.usesSprites || !this.sprite || this.isDead) return;
+
+    // Flying from knockback
+    if (Math.abs(this.state.vx) > 10 || this.state.vy < -20) {
+      this.playAnimation("worm_fly_anim");
+      return;
+    }
+
+    // Falling
+    if (this.state.vy > 30) {
+      this.playAnimation("worm_fall_anim");
+      return;
+    }
+
+    // Walking
+    if (this.isWalking) {
+      this.playAnimation("worm_walk");
+      return;
+    }
+
+    // Default idle
+    this.playAnimation("worm_idle");
+  }
+
+  private playAnimation(key: string): void {
+    if (!this.sprite || !this.scene.anims.exists(key)) return;
+    if (this.currentAnim === key) return;
+    this.currentAnim = key;
+    this.sprite.play(key, true);
   }
 
   flashDamage(damage: number): void {
     // Flash red
-    this.body.setFillStyle(0xff0000);
-    this.scene.time.delayedCall(200, () => {
-      const color = COLOR_MAP[this.teamColor] ?? 0xffffff;
-      if (this.state.isAlive) {
-        this.body.setFillStyle(color);
-      }
-    });
+    if (this.sprite) {
+      this.sprite.setTint(0xff0000);
+      this.scene.time.delayedCall(200, () => {
+        if (this.state.isAlive && this.sprite) {
+          this.sprite.setTint(COLOR_MAP[this.teamColor] ?? 0xffffff);
+        }
+      });
+    } else if (this.fallbackBody) {
+      this.fallbackBody.setFillStyle(0xff0000);
+      this.scene.time.delayedCall(200, () => {
+        if (this.state.isAlive && this.fallbackBody) {
+          this.fallbackBody.setFillStyle(COLOR_MAP[this.teamColor] ?? 0xffffff);
+        }
+      });
+    }
 
     // Show damage number
-    const dmgText = this.scene.add.text(
-      this.body.x,
-      this.body.y - 35,
-      `-${damage}`,
-      {
-        fontSize: "14px",
-        fontFamily: "monospace",
-        color: "#ff4444",
-        stroke: "#000000",
-        strokeThickness: 3,
-        fontStyle: "bold",
-      },
-    );
+    const dmgText = this.scene.add.text(this.x, this.y - 35, `-${damage}`, {
+      fontSize: "14px",
+      fontFamily: "monospace",
+      color: "#ff4444",
+      stroke: "#000000",
+      strokeThickness: 3,
+      fontStyle: "bold",
+    });
     dmgText.setOrigin(0.5);
     dmgText.setDepth(10);
 
@@ -178,30 +357,61 @@ export class WormEntity {
   }
 
   private die(): void {
-    this.body.setFillStyle(0x666666);
-    this.body.setAlpha(0.5);
+    this.isDead = true;
+
+    if (
+      this.usesSprites &&
+      this.sprite &&
+      this.scene.anims.exists("worm_die_anim")
+    ) {
+      this.sprite.play("worm_die_anim");
+      this.sprite.once("animationcomplete", () => {
+        if (this.sprite) {
+          this.sprite.setVisible(false);
+        }
+        this.showGrave();
+      });
+    } else {
+      // Fallback
+      if (this.fallbackBody) {
+        this.fallbackBody.setFillStyle(0x666666);
+        this.fallbackBody.setAlpha(0.5);
+      }
+      if (this.sprite) {
+        this.sprite.setAlpha(0.5);
+        this.sprite.setTint(0x666666);
+      }
+      this.showGrave();
+    }
+
     this.nameText.setAlpha(0.5);
     this.hpBar.setVisible(false);
     this.hideAimLine();
+  }
 
-    // Tombstone text
-    const rip = this.scene.add.text(this.body.x, this.body.y - 10, "RIP", {
-      fontSize: "8px",
-      fontFamily: "monospace",
-      color: "#888888",
-      stroke: "#000000",
-      strokeThickness: 1,
-    });
-    rip.setOrigin(0.5);
-    rip.setDepth(3);
+  private showGrave(): void {
+    if (hasSpritesheet(this.scene, "grave")) {
+      const grave = this.scene.add.sprite(this.x, this.y, "grave", 0);
+      grave.setDepth(3);
+    } else {
+      const rip = this.scene.add.text(this.x, this.y - 10, "RIP", {
+        fontSize: "8px",
+        fontFamily: "monospace",
+        color: "#888888",
+        stroke: "#000000",
+        strokeThickness: 1,
+      });
+      rip.setOrigin(0.5);
+      rip.setDepth(3);
+    }
   }
 
   private drawHpBar(): void {
     this.hpBar.clear();
     const barWidth = 28;
     const barHeight = 4;
-    const x = this.body.x - barWidth / 2;
-    const y = this.body.y - 18;
+    const x = this.x - barWidth / 2;
+    const y = this.y - 22;
 
     // Background
     this.hpBar.fillStyle(0x000000, 0.7);
@@ -215,7 +425,8 @@ export class WormEntity {
   }
 
   destroy(): void {
-    this.body.destroy();
+    this.sprite?.destroy();
+    this.fallbackBody?.destroy();
     this.nameText.destroy();
     this.hpBar.destroy();
     this.aimLine.destroy();

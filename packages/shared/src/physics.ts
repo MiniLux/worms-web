@@ -8,6 +8,11 @@ import {
   FALL_DAMAGE_THRESHOLD,
   FALL_DAMAGE_PER_PIXEL,
   FIRE_POWER_MULTIPLIER,
+  WORM_WIDTH,
+  WORM_HEIGHT,
+  WORM_WALK_SPEED,
+  WORM_MAX_CLIMB,
+  WORM_FRICTION_GROUND,
 } from "./constants";
 import type { TrajectoryPoint } from "./types";
 
@@ -42,7 +47,11 @@ export function encodeBitmap(bitmap: Uint8Array): string {
 }
 
 /** Check if a pixel is solid in the bitmap */
-export function getBitmapPixel(bitmap: Uint8Array, x: number, y: number): boolean {
+export function getBitmapPixel(
+  bitmap: Uint8Array,
+  x: number,
+  y: number,
+): boolean {
   if (x < 0 || x >= TERRAIN_WIDTH || y < 0 || y >= TERRAIN_HEIGHT) return false;
   const byteIndex = y * BITMAP_ROW_BYTES + Math.floor(x / 8);
   const bitIndex = 7 - (x % 8);
@@ -50,7 +59,12 @@ export function getBitmapPixel(bitmap: Uint8Array, x: number, y: number): boolea
 }
 
 /** Set a pixel in the bitmap */
-export function setBitmapPixel(bitmap: Uint8Array, x: number, y: number, solid: boolean): void {
+export function setBitmapPixel(
+  bitmap: Uint8Array,
+  x: number,
+  y: number,
+  solid: boolean,
+): void {
   if (x < 0 || x >= TERRAIN_WIDTH || y < 0 || y >= TERRAIN_HEIGHT) return;
   const byteIndex = y * BITMAP_ROW_BYTES + Math.floor(x / 8);
   const bitIndex = 7 - (x % 8);
@@ -66,7 +80,7 @@ export function eraseCircleFromBitmap(
   bitmap: Uint8Array,
   cx: number,
   cy: number,
-  radius: number
+  radius: number,
 ): number {
   let erased = 0;
   const r2 = radius * radius;
@@ -113,7 +127,7 @@ export function simulateBallistic(
   bitmap: Uint8Array,
   fuseTimeMs: number = 0,
   bounceElasticity: number = 0,
-  affectedByWind: boolean = true
+  affectedByWind: boolean = true,
 ): BallisticResult {
   const speed = power * FIRE_POWER_MULTIPLIER;
   let vx = Math.cos(angle) * speed;
@@ -188,7 +202,11 @@ export function simulateBallistic(
         // Back up to previous position
         x = prevX;
         y = prevY;
-        trajectory[trajectory.length - 1] = { x: Math.round(x), y: Math.round(y), t };
+        trajectory[trajectory.length - 1] = {
+          x: Math.round(x),
+          y: Math.round(y),
+          t,
+        };
 
         // Reverse and dampen
         vy = -vy * bounceElasticity;
@@ -246,9 +264,16 @@ export function raycast(
   sy: number,
   angle: number,
   bitmap: Uint8Array,
-  worms: Array<{ id: string; x: number; y: number; width: number; height: number; alive: boolean }>,
+  worms: Array<{
+    id: string;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    alive: boolean;
+  }>,
   maxDistance: number = 1500,
-  excludeWormId?: string
+  excludeWormId?: string,
 ): HitscanResult {
   const dx = Math.cos(angle);
   const dy = Math.sin(angle);
@@ -261,7 +286,13 @@ export function raycast(
     // Out of bounds
     if (x < 0 || x >= TERRAIN_WIDTH || y < 0 || y >= TERRAIN_HEIGHT) {
       if (y >= WATER_LEVEL) {
-        return { hitX: x, hitY: y, hitType: "none", hitWormId: null, distance: d };
+        return {
+          hitX: x,
+          hitY: y,
+          hitType: "none",
+          hitWormId: null,
+          distance: d,
+        };
       }
       continue;
     }
@@ -277,13 +308,25 @@ export function raycast(
         y >= worm.y - hh &&
         y <= worm.y + hh
       ) {
-        return { hitX: x, hitY: y, hitType: "worm", hitWormId: worm.id, distance: d };
+        return {
+          hitX: x,
+          hitY: y,
+          hitType: "worm",
+          hitWormId: worm.id,
+          distance: d,
+        };
       }
     }
 
     // Check terrain
     if (getBitmapPixel(bitmap, x, y)) {
-      return { hitX: x, hitY: y, hitType: "terrain", hitWormId: null, distance: d };
+      return {
+        hitX: x,
+        hitY: y,
+        hitType: "terrain",
+        hitWormId: null,
+        distance: d,
+      };
     }
   }
 
@@ -315,7 +358,7 @@ export function computeKnockback(
   explosionY: number,
   radius: number,
   baseDamage: number,
-  knockbackMultiplier: number = 1.0
+  knockbackMultiplier: number = 1.0,
 ): KnockbackResult {
   const dx = wormX - explosionX;
   const dy = wormY - explosionY;
@@ -349,7 +392,9 @@ export function computeFallDamage(fallVelocity: number): number {
   // At gravity 300 px/s², velocity v implies fall of v²/(2*g) pixels
   const fallPixels = (fallVelocity * fallVelocity) / (2 * GRAVITY);
   if (fallPixels <= FALL_DAMAGE_THRESHOLD) return 0;
-  return Math.round((fallPixels - FALL_DAMAGE_THRESHOLD) * FALL_DAMAGE_PER_PIXEL);
+  return Math.round(
+    (fallPixels - FALL_DAMAGE_THRESHOLD) * FALL_DAMAGE_PER_PIXEL,
+  );
 }
 
 // ─── Terrain Surface Finder ─────────────────────────────
@@ -366,4 +411,218 @@ export function findSurfaceY(bitmap: Uint8Array, x: number): number {
     }
   }
   return WATER_LEVEL; // no terrain found, return water level
+}
+
+// ─── Worm Physics Step ──────────────────────────────────
+
+export interface WormPhysicsStepResult {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  landed: boolean;
+  landingVy: number;
+  inWater: boolean;
+}
+
+/**
+ * Simulate one physics step for a worm against terrain.
+ * Handles gravity, terrain collision, terrain-following (walking), and water death.
+ *
+ * @param x, y — current worm center position
+ * @param vx, vy — current velocity
+ * @param dt — time step in seconds
+ * @param bitmap — terrain bitmap
+ * @param isWalking — true if the worm is actively walking (arrow key held)
+ * @param walkDirection — -1 for left, +1 for right, 0 if not walking
+ */
+export function simulateWormStep(
+  x: number,
+  y: number,
+  vx: number,
+  vy: number,
+  dt: number,
+  bitmap: Uint8Array,
+  isWalking: boolean,
+  walkDirection: number,
+): WormPhysicsStepResult {
+  const halfW = WORM_WIDTH / 2;
+  const halfH = WORM_HEIGHT / 2;
+  const feetY = y + halfH;
+
+  // Check if worm is currently on ground
+  const onGround =
+    feetY < TERRAIN_HEIGHT &&
+    feetY >= 0 &&
+    getBitmapPixel(bitmap, Math.round(x), Math.round(feetY + 1));
+
+  if (onGround && Math.abs(vx) < 2 && vy >= 0) {
+    // Worm is resting on ground
+    if (isWalking && walkDirection !== 0) {
+      // Walking: move horizontally along terrain surface
+      const dx = walkDirection * WORM_WALK_SPEED * dt;
+      const newX = Math.max(halfW, Math.min(TERRAIN_WIDTH - halfW, x + dx));
+      const targetX = Math.round(newX);
+
+      // Find surface at target X
+      // Scan from above current position downward
+      const scanStartY = Math.round(y - halfH - WORM_MAX_CLIMB);
+      const scanEndY = Math.round(feetY + WORM_MAX_CLIMB + 20);
+
+      let newSurfaceY = -1;
+      for (
+        let sy = Math.max(0, scanStartY);
+        sy < Math.min(TERRAIN_HEIGHT, scanEndY);
+        sy++
+      ) {
+        if (getBitmapPixel(bitmap, targetX, sy)) {
+          newSurfaceY = sy;
+          break;
+        }
+      }
+
+      if (newSurfaceY >= 0) {
+        const climb = y + halfH - newSurfaceY;
+        if (climb >= -WORM_MAX_CLIMB) {
+          // Can walk: surface is within climbable range
+          return {
+            x: newX,
+            y: newSurfaceY - halfH,
+            vx: 0,
+            vy: 0,
+            landed: false,
+            landingVy: 0,
+            inWater: false,
+          };
+        }
+        // Too steep — can't walk there
+        return {
+          x,
+          y,
+          vx: 0,
+          vy: 0,
+          landed: false,
+          landingVy: 0,
+          inWater: false,
+        };
+      }
+
+      // No ground at target — check if there's a drop
+      // Look further below for ground
+      for (
+        let sy = scanEndY;
+        sy < Math.min(TERRAIN_HEIGHT, scanEndY + 40);
+        sy++
+      ) {
+        if (getBitmapPixel(bitmap, targetX, sy)) {
+          // There's ground not too far below — move there and let gravity handle it
+          return {
+            x: newX,
+            y: sy - halfH,
+            vx: 0,
+            vy: 0,
+            landed: false,
+            landingVy: 0,
+            inWater: false,
+          };
+        }
+      }
+
+      // No ground within reach — start falling
+      return {
+        x: newX,
+        y,
+        vx: 0,
+        vy: 10, // small initial downward velocity to start falling
+        landed: false,
+        landingVy: 0,
+        inWater: false,
+      };
+    }
+
+    // Standing still on ground
+    return { x, y, vx: 0, vy: 0, landed: false, landingVy: 0, inWater: false };
+  }
+
+  // Worm is airborne — apply physics
+  vy += GRAVITY * dt;
+  const newX = Math.max(halfW, Math.min(TERRAIN_WIDTH - halfW, x + vx * dt));
+  const newY = y + vy * dt;
+
+  // Check water
+  if (newY + halfH >= WATER_LEVEL) {
+    return {
+      x: newX,
+      y: WATER_LEVEL - halfH,
+      vx: 0,
+      vy: 0,
+      landed: false,
+      landingVy: 0,
+      inWater: true,
+    };
+  }
+
+  // Check terrain collision at new position
+  const newFeetY = newY + halfH;
+  if (
+    newFeetY >= 0 &&
+    newFeetY < TERRAIN_HEIGHT &&
+    Math.round(newX) >= 0 &&
+    Math.round(newX) < TERRAIN_WIDTH &&
+    getBitmapPixel(bitmap, Math.round(newX), Math.round(newFeetY))
+  ) {
+    // Hit terrain — find exact surface
+    let surfaceY = Math.round(newFeetY);
+    for (
+      let sy = Math.max(0, Math.round(y + halfH));
+      sy <= Math.round(newFeetY);
+      sy++
+    ) {
+      if (getBitmapPixel(bitmap, Math.round(newX), sy)) {
+        surfaceY = sy;
+        break;
+      }
+    }
+
+    const landingVy = vy;
+
+    // Apply ground friction to horizontal velocity
+    let newVx = vx * WORM_FRICTION_GROUND;
+    if (Math.abs(newVx) < 5) newVx = 0;
+
+    // If still has significant horizontal velocity, keep sliding
+    if (Math.abs(newVx) >= 5) {
+      return {
+        x: newX,
+        y: surfaceY - halfH,
+        vx: newVx,
+        vy: -Math.abs(vy) * 0.2, // small bounce
+        landed: false,
+        landingVy,
+        inWater: false,
+      };
+    }
+
+    // Fully landed
+    return {
+      x: newX,
+      y: surfaceY - halfH,
+      vx: 0,
+      vy: 0,
+      landed: true,
+      landingVy,
+      inWater: false,
+    };
+  }
+
+  // Still airborne
+  return {
+    x: newX,
+    y: newY,
+    vx,
+    vy,
+    landed: false,
+    landingVy: 0,
+    inWater: false,
+  };
 }

@@ -119,6 +119,8 @@ export type GameClientMessage =
   | { type: "JOIN_GAME"; playerId: string }
   | { type: "INIT_GAME"; payload: GameInitPayload }
   | { type: "MOVE"; direction: "left" | "right" }
+  | { type: "MOVE_START"; direction: "left" | "right" }
+  | { type: "MOVE_STOP" }
   | { type: "STOP_MOVE" }
   | { type: "JUMP"; kind: "forward" | "backflip" }
   | { type: "SELECT_WEAPON"; weaponId: WeaponId }
@@ -217,6 +219,29 @@ export type GameServerMessage =
   | { type: "RETREAT_START"; timeMs: number }
   | { type: "GAME_OVER"; winnerId: string | null; reason: string }
   | { type: "TIMER_SYNC"; remaining: number }
+  | {
+      type: "WORM_PHYSICS_UPDATE";
+      updates: Array<{
+        wormId: string;
+        x: number;
+        y: number;
+        vx: number;
+        vy: number;
+        facing: "left" | "right";
+      }>;
+    }
+  | {
+      type: "WORM_LANDED";
+      wormId: string;
+      x: number;
+      y: number;
+      fallDamage: number;
+      newHealth: number;
+    }
+  | {
+      type: "WORM_FELL_IN_WATER";
+      wormId: string;
+    }
   | { type: "PLAYER_DISCONNECTED"; playerId: string }
   | { type: "PLAYER_RECONNECTED"; playerId: string }
   | { type: "CHAT"; playerId: string; displayName: string; text: string }

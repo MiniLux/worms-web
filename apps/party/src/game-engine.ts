@@ -57,7 +57,10 @@ export function initializeGame(payload: GameInitPayload): GameState {
     const worms: WormState[] = [];
     for (let w = 0; w < wormsPerTeam; w++) {
       const spawnIdx = playerIdx * wormsPerTeam + w;
-      const spawn = spawnPoints[spawnIdx] || { x: 100 + spawnIdx * 200, y: 300 };
+      const spawn = spawnPoints[spawnIdx] || {
+        x: 100 + spawnIdx * 200,
+        y: 300,
+      };
       worms.push({
         id: `${p.id}-worm-${w}`,
         name: `Worm ${w + 1}`,
@@ -126,7 +129,7 @@ export function advanceTurn(state: GameState): GameServerMessage[] {
 
   // Check for game over
   const alivePlayers = state.players.filter((p) =>
-    p.worms.some((w) => w.isAlive)
+    p.worms.some((w) => w.isAlive),
   );
 
   if (alivePlayers.length <= 1) {
@@ -142,7 +145,7 @@ export function advanceTurn(state: GameState): GameServerMessage[] {
 
   // Find next player (round-robin among alive players)
   const currentPlayerIdx = state.players.findIndex(
-    (p) => p.id === state.activePlayerId
+    (p) => p.id === state.activePlayerId,
   );
   let nextPlayerIdx = (currentPlayerIdx + 1) % state.players.length;
 
@@ -167,7 +170,7 @@ export function advanceTurn(state: GameState): GameServerMessage[] {
 
   // Pick next worm in sequence
   const currentWormIdx = nextPlayer.worms.findIndex(
-    (w) => w.id === state.activeWormId && w.playerId === nextPlayer.id
+    (w) => w.id === state.activeWormId && w.playerId === nextPlayer.id,
   );
   let nextWorm: WormState;
   if (currentWormIdx >= 0) {
@@ -204,14 +207,18 @@ export function advanceTurn(state: GameState): GameServerMessage[] {
 
 export function processMove(
   state: GameState,
-  direction: "left" | "right"
+  direction: "left" | "right",
 ): GameServerMessage[] {
   const worm = findWorm(state, state.activeWormId);
   if (!worm || !worm.isAlive) return [];
 
   const bitmap = decodeBitmap(state.terrain.bitmap);
-  const dx = direction === "left" ? -WORM_WALK_SPEED * 0.1 : WORM_WALK_SPEED * 0.1;
-  const newX = Math.max(WORM_WIDTH / 2, Math.min(1920 - WORM_WIDTH / 2, worm.x + dx));
+  const dx =
+    direction === "left" ? -WORM_WALK_SPEED * 0.1 : WORM_WALK_SPEED * 0.1;
+  const newX = Math.max(
+    WORM_WIDTH / 2,
+    Math.min(1920 - WORM_WIDTH / 2, worm.x + dx),
+  );
 
   // Check if can walk (terrain below, air at new position)
   const headY = worm.y - WORM_HEIGHT / 2;
@@ -258,7 +265,7 @@ export function processMove(
 
 export function processJump(
   state: GameState,
-  kind: "forward" | "backflip"
+  kind: "forward" | "backflip",
 ): GameServerMessage[] {
   const worm = findWorm(state, state.activeWormId);
   if (!worm || !worm.isAlive) return [];
@@ -284,7 +291,7 @@ export function processFire(
   state: GameState,
   weaponId: WeaponId,
   angle: number,
-  power: number
+  power: number,
 ): GameServerMessage[] {
   const worm = findWorm(state, state.activeWormId);
   if (!worm || !worm.isAlive) return [];
@@ -318,7 +325,7 @@ export function processFire(
     bitmap,
     def.fuseTime,
     def.bounceElasticity,
-    def.affectedByWind
+    def.affectedByWind,
   );
 
   const messages: GameServerMessage[] = [];
@@ -351,7 +358,7 @@ export function processFire(
           ey,
           radius,
           def.damage,
-          def.knockbackMultiplier
+          def.knockbackMultiplier,
         );
         if (kb.damage > 0) {
           w.health = Math.max(0, w.health - kb.damage);
@@ -373,20 +380,8 @@ export function processFire(
     }
   }
 
-  // Check if any knocked-back worms land in water
-  for (const p of state.players) {
-    for (const w of p.worms) {
-      if (!w.isAlive) continue;
-      // Simplified: if worm has downward velocity and is near water, kill them
-      // Full physics resolution would simulate the knockback trajectory
-      if (w.y >= WATER_LEVEL - 10) {
-        w.isAlive = false;
-        if (!deaths.find((d) => d.wormId === w.id)) {
-          deaths.push({ wormId: w.id, cause: "water" });
-        }
-      }
-    }
-  }
+  // Water/knockback deaths are handled by the physics loop now
+  // (worms with vx/vy will be simulated and killed if they hit water)
 
   messages.push({
     type: "FIRE_RESULT",
@@ -398,8 +393,7 @@ export function processFire(
     deaths,
   });
 
-  // After firing, enter retreat phase
-  state.phase = "retreat";
+  // Don't set phase to retreat here — the server waits for physics to settle first
 
   return messages;
 }
@@ -407,7 +401,8 @@ export function processFire(
 export function processHitscan(
   state: GameState,
   weaponId: WeaponId,
-  angle: number
+  angle: number,
+  shotsRemaining: number,
 ): GameServerMessage[] {
   const worm = findWorm(state, state.activeWormId);
   if (!worm || !worm.isAlive) return [];
@@ -430,10 +425,18 @@ export function processHitscan(
         width: WORM_WIDTH,
         height: WORM_HEIGHT,
         alive: w.isAlive,
-      }))
+      })),
   );
 
-  const hit = raycast(worm.x, worm.y, angle, bitmap, wormTargets, 1500, worm.id);
+  const hit = raycast(
+    worm.x,
+    worm.y,
+    angle,
+    bitmap,
+    wormTargets,
+    1500,
+    worm.id,
+  );
 
   const explosions: ExplosionEvent[] = [];
   const terrainDestruction: TerrainDestructionEvent[] = [];
@@ -442,7 +445,11 @@ export function processHitscan(
 
   if (hit.hitType === "terrain" && def.explosionRadius > 0) {
     explosions.push({ x: hit.hitX, y: hit.hitY, radius: def.explosionRadius });
-    terrainDestruction.push({ x: hit.hitX, y: hit.hitY, radius: def.explosionRadius });
+    terrainDestruction.push({
+      x: hit.hitX,
+      y: hit.hitY,
+      radius: def.explosionRadius,
+    });
     eraseCircleFromBitmap(bitmap, hit.hitX, hit.hitY, def.explosionRadius);
     state.terrain.bitmap = encodeBitmap(bitmap);
   }
@@ -457,7 +464,7 @@ export function processHitscan(
         hit.hitY,
         30,
         def.damage,
-        def.knockbackMultiplier
+        def.knockbackMultiplier,
       );
       targetWorm.health = Math.max(0, targetWorm.health - kb.damage);
       targetWorm.vx += kb.vx;
@@ -476,9 +483,7 @@ export function processHitscan(
     }
   }
 
-  // Track shots remaining in this turn
-  // For shotgun: 2 shots per turn
-  const shotsRemaining = (def.shotsPerTurn || 1) - 1; // first shot used
+  // shotsRemaining is passed in from the server which tracks the count
 
   return [
     {
@@ -501,7 +506,7 @@ export function processHitscan(
 export function processMelee(
   state: GameState,
   weaponId: WeaponId,
-  direction: "left" | "right"
+  direction: "left" | "right",
 ): GameServerMessage[] {
   const worm = findWorm(state, state.activeWormId);
   if (!worm || !worm.isAlive) return [];
@@ -546,7 +551,7 @@ export function processMelee(
     }
   }
 
-  state.phase = "retreat";
+  // Don't set phase to retreat here — the server waits for physics to settle first
 
   return [{ type: "MELEE_RESULT", weaponId, damages, deaths }];
 }
@@ -554,7 +559,7 @@ export function processMelee(
 export function processTeleport(
   state: GameState,
   targetX: number,
-  targetY: number
+  targetY: number,
 ): GameServerMessage[] {
   const worm = findWorm(state, state.activeWormId);
   if (!worm || !worm.isAlive) return [];
@@ -577,8 +582,7 @@ export function processTeleport(
   worm.vx = 0;
   worm.vy = 0;
 
-  // Teleport ends the turn
-  state.phase = "retreat";
+  // Teleport doesn't cause knockback, server handles retreat directly
 
   return [{ type: "TELEPORT_RESULT", wormId: worm.id, x, y }];
 }
@@ -596,7 +600,7 @@ function findWorm(state: GameState, wormId: string): WormState | undefined {
 
 export function checkGameOver(state: GameState): GameServerMessage | null {
   const alivePlayers = state.players.filter((p) =>
-    p.worms.some((w) => w.isAlive)
+    p.worms.some((w) => w.isAlive),
   );
 
   if (alivePlayers.length <= 1) {

@@ -82,6 +82,7 @@ export class HUDScene extends Phaser.Scene {
     gameScene.events.on("aim_update", this.onAimUpdate, this);
     gameScene.events.on("power_update", this.onPowerUpdate, this);
     gameScene.events.on("weapon_selected", this.onWeaponSelected, this);
+    gameScene.events.on("charge_start", this.onChargeStart, this);
 
     // Listen for network events forwarded by GameScene
     this.events.on("state_sync", this.onStateSync, this);
@@ -154,6 +155,14 @@ export class HUDScene extends Phaser.Scene {
 
   private onPowerUpdate(power: number): void {
     this.currentPower = power;
+    this.drawPowerBar();
+  }
+
+  private onChargeStart(): void {
+    this.showingPower = true;
+    this.currentPower = 0;
+    this.powerBar.setVisible(true);
+    this.powerLabel.setVisible(true);
     this.drawPowerBar();
   }
 
@@ -288,6 +297,14 @@ export class HUDScene extends Phaser.Scene {
     const totalWidth = MVP_WEAPON_IDS.length * (btnSize + gap) - gap;
     const startX = width / 2 - totalWidth / 2;
 
+    const WEAPON_ICON_MAP: Record<string, string> = {
+      bazooka: "icon_bazooka",
+      shotgun: "icon_shotgun",
+      grenade: "icon_grenade",
+      fire_punch: "icon_firepunch",
+      teleport: "icon_teleport",
+    };
+
     MVP_WEAPON_IDS.forEach((weaponId, i) => {
       const def = WEAPON_DEFINITIONS[weaponId];
       const x = startX + i * (btnSize + gap) + btnSize / 2;
@@ -300,15 +317,26 @@ export class HUDScene extends Phaser.Scene {
         .setStrokeStyle(1, 0x555555)
         .setInteractive({ useHandCursor: true });
 
-      const label = this.add
-        .text(0, 0, def.name.slice(0, 3).toUpperCase(), {
-          fontSize: "9px",
-          fontFamily: "monospace",
-          color: "#ffffff",
-        })
-        .setOrigin(0.5);
+      const iconKey = WEAPON_ICON_MAP[weaponId];
+      const hasIcon = iconKey && this.textures.exists(iconKey);
 
-      container.add([bg, label]);
+      const children: Phaser.GameObjects.GameObject[] = [bg];
+
+      if (hasIcon) {
+        const icon = this.add.image(0, 0, iconKey).setDisplaySize(32, 32);
+        children.push(icon);
+      } else {
+        const label = this.add
+          .text(0, 0, def.name.slice(0, 3).toUpperCase(), {
+            fontSize: "9px",
+            fontFamily: "monospace",
+            color: "#ffffff",
+          })
+          .setOrigin(0.5);
+        children.push(label);
+      }
+
+      container.add(children);
       container.setDepth(20);
 
       bg.on("pointerdown", () => {
