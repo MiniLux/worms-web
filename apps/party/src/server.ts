@@ -268,6 +268,9 @@ export default class GameServer implements Party.Server {
         const posChanged =
           Math.abs(worm.x - result.x) > 0.5 ||
           Math.abs(worm.y - result.y) > 0.5;
+        const velChanged =
+          Math.abs(worm.vx - result.vx) > 2 ||
+          Math.abs(worm.vy - result.vy) > 2;
         worm.x = result.x;
         worm.y = result.y;
         worm.vx = result.vx;
@@ -276,7 +279,7 @@ export default class GameServer implements Party.Server {
           worm.facing = walkDir > 0 ? "right" : "left";
         }
 
-        if (posChanged) {
+        if (posChanged || velChanged) {
           updates.push({
             wormId: worm.id,
             x: worm.x,

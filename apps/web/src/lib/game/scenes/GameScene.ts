@@ -177,6 +177,7 @@ export class GameScene extends Phaser.Scene {
     this.cursors = this.input.keyboard!.createCursorKeys();
     this.setupInput();
     this.createProjectileAnims();
+    this.createSmokeAnim();
     this.createWindParticleAnims();
 
     this.socket = new PartySocket({
@@ -211,6 +212,9 @@ export class GameScene extends Phaser.Scene {
     this.scene.launch("HUDScene");
   }
 
+  // Smoke trail sprites
+  private smokeTrail: Phaser.GameObjects.Sprite[] = [];
+
   private createProjectileAnims(): void {
     if (
       this.textures.exists("proj_missile") &&
@@ -238,6 +242,20 @@ export class GameScene extends Phaser.Scene {
         }),
         frameRate: 15,
         repeat: -1,
+      });
+    }
+  }
+
+  private createSmokeAnim(): void {
+    if (this.textures.exists("fx_smoke") && !this.anims.exists("anim_smoke")) {
+      this.anims.create({
+        key: "anim_smoke",
+        frames: this.anims.generateFrameNumbers("fx_smoke", {
+          start: 0,
+          end: 27,
+        }),
+        frameRate: 24,
+        repeat: 0,
       });
     }
   }
@@ -949,6 +967,9 @@ export class GameScene extends Phaser.Scene {
 
     let index = 0;
     const startTime = this.time.now;
+    let lastSmokeTime = 0;
+    const smokeInterval = 80; // ms between smoke puffs
+    const hasSmoke = useMissile && this.anims.exists("anim_smoke");
     this.cameras.main.stopFollow();
 
     const updateEvent = this.time.addEvent({
@@ -997,6 +1018,18 @@ export class GameScene extends Phaser.Scene {
         }
         if (this.projectileFallback) {
           this.projectileFallback.setPosition(x, y);
+        }
+
+        // Spawn smoke puffs behind missile
+        if (hasSmoke && elapsed - lastSmokeTime > smokeInterval) {
+          lastSmokeTime = elapsed;
+          const smoke = this.add.sprite(x, y, "fx_smoke", 0);
+          smoke.setDepth(5);
+          smoke.setScale(0.4);
+          smoke.setAlpha(0.7);
+          smoke.play("anim_smoke");
+          smoke.once("animationcomplete", () => smoke.destroy());
+          this.smokeTrail.push(smoke);
         }
 
         this.cameras.main.centerOn(x, y);
@@ -1090,6 +1123,8 @@ export class GameScene extends Phaser.Scene {
     this.wormEntities.clear();
     this.projectileSprite?.destroy();
     this.projectileFallback?.destroy();
+    for (const s of this.smokeTrail) s.destroy();
+    this.smokeTrail = [];
     this.hideTeleportCursor();
     this.destroyWindParticles();
   }

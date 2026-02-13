@@ -21,24 +21,14 @@ function hasSpritesheet(scene: Phaser.Scene, key: string): boolean {
 
 /**
  * Weapon aim sprite config.
- * Each weapon has 3 spritesheets: up (u), base (straight), down (d).
- * Each sheet has 32 frames. Together they cover the full aim arc.
- *
- * In the original Worms, the aim angle goes from straight up (-PI/2)
- * to straight down (+PI/2) in front of the worm. The 3 sheets split this
- * into 3 zones of ~32 frames each = 96 total frames for the full arc.
- *
- * Up sheet:   frame 0 = straight up, frame 31 = ~30deg above horizontal
- * Base sheet: frame 0 = ~30deg above horizontal, frame 31 = ~30deg below horizontal
- * Down sheet: frame 0 = ~30deg below horizontal, frame 31 = straight down
+ * Each weapon has a base spritesheet with 32 frames covering the full aim arc.
+ * Frame 0 = aiming most downward, frame 31 = aiming most upward.
+ * (The u/d variants are for uphill/downhill terrain slopes — we use base only.)
  */
-const WEAPON_AIM_SPRITES: Record<
-  string,
-  { u: string; base: string; d: string }
-> = {
-  bazooka: { u: "worm_bazu", base: "worm_baz", d: "worm_bazd" },
-  grenade: { u: "worm_throwu", base: "worm_throw", d: "worm_throwd" },
-  shotgun: { u: "worm_shotfu", base: "worm_shotf", d: "worm_shotfd" },
+const WEAPON_AIM_SPRITES: Record<string, string> = {
+  bazooka: "worm_baz",
+  grenade: "worm_throw",
+  shotgun: "worm_shotf",
 };
 
 export class WormEntity {
@@ -485,9 +475,9 @@ export class WormEntity {
 
     // Weapon aim pose: set texture + frame based on aim angle
     if (this.state.isActive && this.holdingWeapon) {
-      const aimSprites = WEAPON_AIM_SPRITES[this.holdingWeapon];
-      if (aimSprites) {
-        this.applyWeaponAimFrame(aimSprites);
+      const aimTexture = WEAPON_AIM_SPRITES[this.holdingWeapon];
+      if (aimTexture) {
+        this.applyWeaponAimFrame(aimTexture);
         return;
       }
     }
@@ -497,65 +487,35 @@ export class WormEntity {
   }
 
   /**
-   * Map the aim angle to the correct weapon spritesheet + frame.
+   * Map the aim angle to the correct weapon sprite frame.
    *
-   * The angle is in radians from atan2(dy, dx). For a right-facing worm:
-   *   - Straight right = 0
-   *   - Straight up = -PI/2
-   *   - Straight down = +PI/2
+   * Each weapon has a single 32-frame sheet covering the full aim arc.
+   * Frame 0 = aiming most downward (+PI/2), frame 31 = aiming most upward (-PI/2).
    *
-   * The 3 spritesheets (u, base, d) cover 96 frames total across the
-   * full arc from straight up (-PI/2) to straight down (+PI/2).
-   *
-   * When facing left, the sprite is flipped, but the vertical angle
-   * component stays the same. We normalize to a "vertical angle"
-   * where -PI/2 = up, 0 = horizontal, +PI/2 = down.
+   * The aimAngle comes from atan2(dy, dx):
+   *   - Right-facing: 0 = horizontal, -PI/2 = up, +PI/2 = down
+   *   - Left-facing: PI = horizontal, needs to be mirrored
    */
-  private applyWeaponAimFrame(sprites: {
-    u: string;
-    base: string;
-    d: string;
-  }): void {
+  private applyWeaponAimFrame(textureKey: string): void {
     if (!this.sprite) return;
+    if (!hasSpritesheet(this.scene, textureKey)) return;
 
     // Convert atan2 angle to vertical angle relative to facing direction
-    // For right-facing: vertAngle = aimAngle (already correct)
-    // For left-facing: the aim line is mirrored, so vertAngle = PI - aimAngle
     let vertAngle: number;
     if (this.state.facing === "right") {
       vertAngle = this.aimAngle;
     } else {
       vertAngle = Math.PI - this.aimAngle;
-      // Normalize to [-PI, PI]
       if (vertAngle > Math.PI) vertAngle -= 2 * Math.PI;
     }
 
-    // Clamp to [-PI/2, PI/2] (the valid aiming range in front of the worm)
+    // Clamp to [-PI/2, PI/2]
     vertAngle = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, vertAngle));
 
-    // Map from [-PI/2, PI/2] to [0, 95] (96 total frames across 3 sheets)
-    // -PI/2 = frame 0 (up), +PI/2 = frame 95 (down)
-    const t = (vertAngle + Math.PI / 2) / Math.PI; // 0..1
-    const globalFrame = Math.round(t * 95);
-
-    let textureKey: string;
-    let frame: number;
-
-    if (globalFrame < 32) {
-      // Up sheet: frames 0-31
-      textureKey = sprites.u;
-      frame = globalFrame;
-    } else if (globalFrame < 64) {
-      // Base sheet: frames 32-63 → 0-31
-      textureKey = sprites.base;
-      frame = globalFrame - 32;
-    } else {
-      // Down sheet: frames 64-95 → 0-31
-      textureKey = sprites.d;
-      frame = globalFrame - 64;
-    }
-
-    if (!hasSpritesheet(this.scene, textureKey)) return;
+    // Map from [-PI/2, PI/2] to [31, 0] (frame 31 = up, frame 0 = down)
+    // vertAngle -PI/2 = up = frame 31, vertAngle +PI/2 = down = frame 0
+    const t = (vertAngle + Math.PI / 2) / Math.PI; // 0 (up) .. 1 (down)
+    const frame = Math.round((1 - t) * 31);
 
     // Stop any playing animation and set the texture + frame directly
     if (!this.isShowingWeaponFrame || this.sprite.texture.key !== textureKey) {
