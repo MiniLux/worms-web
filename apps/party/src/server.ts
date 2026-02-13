@@ -23,6 +23,8 @@ export default class GameServer implements Party.Server {
   private playerConnections: Map<string, Party.Connection> = new Map();
   private shotsFiredThisTurn: number = 0;
   private maxShotsThisTurn: number = 1;
+  private pendingJoins: Array<{ playerId: string; conn: Party.Connection }> =
+    [];
 
   constructor(readonly room: Party.Room) {}
 
@@ -78,8 +80,6 @@ export default class GameServer implements Party.Server {
   }
 
   onMessage(message: string, sender: Party.Connection): void {
-    if (!this.state) return;
-
     let msg: GameClientMessage;
     try {
       msg = JSON.parse(message);
@@ -87,10 +87,20 @@ export default class GameServer implements Party.Server {
       return;
     }
 
+    // INIT_GAME and JOIN_GAME must work before state exists
     switch (msg.type) {
+      case "INIT_GAME":
+        this.handleInitGame(msg.payload, sender);
+        return;
       case "JOIN_GAME":
         this.handleJoinGame(msg.playerId, sender);
-        break;
+        return;
+    }
+
+    // All other messages require state
+    if (!this.state) return;
+
+    switch (msg.type) {
       case "MOVE":
         this.handleMove(msg.direction, sender);
         break;
@@ -157,14 +167,34 @@ export default class GameServer implements Party.Server {
 
   // ─── Handlers ──────────────────────────────────────────
 
-  private handleJoinGame(playerId: string, conn: Party.Connection): void {
-    if (!this.state) {
+  private handleInitGame(
+    payload: GameInitPayload,
+    conn: Party.Connection,
+  ): void {
+    // Only initialize once
+    if (this.state) return;
+    try {
+      this.state = initializeGame(payload);
+
+      // Process any players who sent JOIN_GAME before init completed
+      for (const pending of this.pendingJoins) {
+        this.handleJoinGame(pending.playerId, pending.conn);
+      }
+      this.pendingJoins = [];
+    } catch (err) {
       conn.send(
         JSON.stringify({
           type: "ERROR",
-          message: "Game not initialized",
+          message: "Failed to initialize game",
         } satisfies GameServerMessage),
       );
+    }
+  }
+
+  private handleJoinGame(playerId: string, conn: Party.Connection): void {
+    if (!this.state) {
+      // Game not initialized yet — queue this join for when INIT_GAME arrives
+      this.pendingJoins.push({ playerId, conn });
       return;
     }
 

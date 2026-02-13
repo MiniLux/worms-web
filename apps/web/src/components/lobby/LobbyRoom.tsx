@@ -64,7 +64,7 @@ export function LobbyRoom({
                     msg.player,
                   ],
                 }
-              : prev
+              : prev,
           );
           break;
         case "PLAYER_LEFT":
@@ -74,7 +74,7 @@ export function LobbyRoom({
                   ...prev,
                   players: prev.players.filter((p) => p.id !== msg.playerId),
                 }
-              : prev
+              : prev,
           );
           break;
         case "PLAYER_UPDATED":
@@ -83,16 +83,21 @@ export function LobbyRoom({
               ? {
                   ...prev,
                   players: prev.players.map((p) =>
-                    p.id === msg.player.id ? msg.player : p
+                    p.id === msg.player.id ? msg.player : p,
                   ),
                 }
-              : prev
+              : prev,
           );
           break;
         case "CONFIG_UPDATED":
           setLobby((prev) => (prev ? { ...prev, config: msg.config } : prev));
           break;
         case "GAME_STARTING":
+          // Store init payload in sessionStorage so the game page can send it
+          sessionStorage.setItem(
+            "gameInitPayload",
+            JSON.stringify(msg.initPayload),
+          );
           router.push(`/game/${msg.gameId}`);
           break;
         case "ERROR":
@@ -114,9 +119,7 @@ export function LobbyRoom({
   const myPlayer = lobby?.players.find((p) => p.id === playerId);
   const isHost = lobby?.hostId === playerId;
   const allReady =
-    lobby &&
-    lobby.players.length >= 2 &&
-    lobby.players.every((p) => p.isReady);
+    lobby && lobby.players.length >= 2 && lobby.players.every((p) => p.isReady);
 
   const copyCode = () => {
     navigator.clipboard.writeText(code);
@@ -164,8 +167,7 @@ export function LobbyRoom({
               <div
                 className="w-3 h-3 rounded-full"
                 style={{
-                  backgroundColor:
-                    TEAM_COLOR_MAP[player.teamColor] ?? "#888",
+                  backgroundColor: TEAM_COLOR_MAP[player.teamColor] ?? "#888",
                 }}
               />
               {player.avatarUrl && (

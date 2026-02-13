@@ -8,7 +8,11 @@ import type {
   TeamColor,
   GameInitPayload,
 } from "@worms/shared";
-import { DEFAULT_HP, DEFAULT_WORMS_PER_TEAM, DEFAULT_TURN_TIME } from "@worms/shared";
+import {
+  DEFAULT_HP,
+  DEFAULT_WORMS_PER_TEAM,
+  DEFAULT_TURN_TIME,
+} from "@worms/shared";
 
 const TEAM_COLORS: TeamColor[] = ["red", "blue", "green", "yellow"];
 
@@ -52,13 +56,16 @@ export default class LobbyServer implements Party.Server {
         const p = this.state.players.find((pl) => pl.id === player.id);
         if (p && !p.isConnected) {
           this.state.players = this.state.players.filter(
-            (pl) => pl.id !== player.id
+            (pl) => pl.id !== player.id,
           );
           this.connections.delete(player.id);
           this.broadcast({ type: "PLAYER_LEFT", playerId: player.id });
 
           // Assign new host if needed
-          if (this.state.hostId === player.id && this.state.players.length > 0) {
+          if (
+            this.state.hostId === player.id &&
+            this.state.players.length > 0
+          ) {
             this.state.hostId = this.state.players[0].id;
             this.state.players[0].isHost = true;
             this.broadcast({
@@ -103,7 +110,7 @@ export default class LobbyServer implements Party.Server {
 
   private handleJoin(
     msg: Extract<LobbyClientMessage, { type: "JOIN_LOBBY" }>,
-    conn: Party.Connection
+    conn: Party.Connection,
   ): void {
     // Check if player is reconnecting
     const existing = this.state.players.find((p) => p.id === msg.playerId);
@@ -111,14 +118,24 @@ export default class LobbyServer implements Party.Server {
       existing.isConnected = true;
       this.connections.set(msg.playerId, conn);
       // Send full state to reconnecting player
-      conn.send(JSON.stringify({ type: "LOBBY_STATE", state: this.state } satisfies LobbyServerMessage));
+      conn.send(
+        JSON.stringify({
+          type: "LOBBY_STATE",
+          state: this.state,
+        } satisfies LobbyServerMessage),
+      );
       this.broadcast({ type: "PLAYER_UPDATED", player: existing });
       return;
     }
 
     // Max 4 players
     if (this.state.players.length >= 4) {
-      conn.send(JSON.stringify({ type: "ERROR", message: "Lobby is full" } satisfies LobbyServerMessage));
+      conn.send(
+        JSON.stringify({
+          type: "ERROR",
+          message: "Lobby is full",
+        } satisfies LobbyServerMessage),
+      );
       return;
     }
 
@@ -143,7 +160,12 @@ export default class LobbyServer implements Party.Server {
     this.connections.set(msg.playerId, conn);
 
     // Send full state to the new player
-    conn.send(JSON.stringify({ type: "LOBBY_STATE", state: this.state } satisfies LobbyServerMessage));
+    conn.send(
+      JSON.stringify({
+        type: "LOBBY_STATE",
+        state: this.state,
+      } satisfies LobbyServerMessage),
+    );
 
     // Notify others
     this.broadcast({ type: "PLAYER_JOINED", player }, msg.playerId);
@@ -151,7 +173,7 @@ export default class LobbyServer implements Party.Server {
 
   private handleSetReady(
     msg: Extract<LobbyClientMessage, { type: "SET_READY" }>,
-    conn: Party.Connection
+    conn: Party.Connection,
   ): void {
     const player = this.findPlayerByConnection(conn);
     if (!player) return;
@@ -162,7 +184,7 @@ export default class LobbyServer implements Party.Server {
 
   private handleSetTeamColor(
     msg: Extract<LobbyClientMessage, { type: "SET_TEAM_COLOR" }>,
-    conn: Party.Connection
+    conn: Party.Connection,
   ): void {
     const player = this.findPlayerByConnection(conn);
     if (!player) return;
@@ -173,7 +195,7 @@ export default class LobbyServer implements Party.Server {
 
   private handleUpdateConfig(
     msg: Extract<LobbyClientMessage, { type: "UPDATE_CONFIG" }>,
-    conn: Party.Connection
+    conn: Party.Connection,
   ): void {
     const player = this.findPlayerByConnection(conn);
     if (!player || player.id !== this.state.hostId) return;
@@ -185,18 +207,33 @@ export default class LobbyServer implements Party.Server {
   private async handleStartGame(conn: Party.Connection): Promise<void> {
     const player = this.findPlayerByConnection(conn);
     if (!player || player.id !== this.state.hostId) {
-      conn.send(JSON.stringify({ type: "ERROR", message: "Only host can start" } satisfies LobbyServerMessage));
+      conn.send(
+        JSON.stringify({
+          type: "ERROR",
+          message: "Only host can start",
+        } satisfies LobbyServerMessage),
+      );
       return;
     }
 
     if (this.state.players.length < 2) {
-      conn.send(JSON.stringify({ type: "ERROR", message: "Need at least 2 players" } satisfies LobbyServerMessage));
+      conn.send(
+        JSON.stringify({
+          type: "ERROR",
+          message: "Need at least 2 players",
+        } satisfies LobbyServerMessage),
+      );
       return;
     }
 
     const allReady = this.state.players.every((p) => p.isReady);
     if (!allReady) {
-      conn.send(JSON.stringify({ type: "ERROR", message: "Not all players are ready" } satisfies LobbyServerMessage));
+      conn.send(
+        JSON.stringify({
+          type: "ERROR",
+          message: "Not all players are ready",
+        } satisfies LobbyServerMessage),
+      );
       return;
     }
 
@@ -212,30 +249,14 @@ export default class LobbyServer implements Party.Server {
       config: this.state.config,
     };
 
-    try {
-      // Call the game party to initialize
-      const gameParty = this.room.context.parties.game;
-      await gameParty.get(gameId).fetch("/init", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(initPayload),
-      });
-
-      // Notify all players to navigate to game
-      this.broadcast({ type: "GAME_STARTING", gameId });
-    } catch (err) {
-      conn.send(
-        JSON.stringify({
-          type: "ERROR",
-          message: "Failed to start game",
-        } satisfies LobbyServerMessage)
-      );
-    }
+    // Notify all players to navigate to game, passing init payload
+    // The first client to connect will send INIT_GAME to the game server
+    this.broadcast({ type: "GAME_STARTING", gameId, initPayload });
   }
 
   private handleChat(
     msg: Extract<LobbyClientMessage, { type: "CHAT" }>,
-    conn: Party.Connection
+    conn: Party.Connection,
   ): void {
     const player = this.findPlayerByConnection(conn);
     if (!player) return;
@@ -248,7 +269,9 @@ export default class LobbyServer implements Party.Server {
     });
   }
 
-  private findPlayerByConnection(conn: Party.Connection): LobbyPlayer | undefined {
+  private findPlayerByConnection(
+    conn: Party.Connection,
+  ): LobbyPlayer | undefined {
     for (const [playerId, c] of this.connections) {
       if (c === conn) {
         return this.state.players.find((p) => p.id === playerId);

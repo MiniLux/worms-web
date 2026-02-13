@@ -42,7 +42,12 @@ export interface PlayerState {
   isConnected: boolean;
 }
 
-export type GamePhase = "waiting" | "playing" | "retreat" | "resolving" | "finished";
+export type GamePhase =
+  | "waiting"
+  | "playing"
+  | "retreat"
+  | "resolving"
+  | "finished";
 
 export interface GameState {
   phase: GamePhase;
@@ -98,7 +103,12 @@ export interface LobbyState {
 // ─── Client → Server Messages ───────────────────────────
 
 export type LobbyClientMessage =
-  | { type: "JOIN_LOBBY"; playerId: string; displayName: string; avatarUrl: string }
+  | {
+      type: "JOIN_LOBBY";
+      playerId: string;
+      displayName: string;
+      avatarUrl: string;
+    }
   | { type: "SET_READY"; ready: boolean }
   | { type: "SET_TEAM_COLOR"; color: TeamColor }
   | { type: "UPDATE_CONFIG"; config: Partial<LobbyConfig> }
@@ -107,6 +117,7 @@ export type LobbyClientMessage =
 
 export type GameClientMessage =
   | { type: "JOIN_GAME"; playerId: string }
+  | { type: "INIT_GAME"; payload: GameInitPayload }
   | { type: "MOVE"; direction: "left" | "right" }
   | { type: "STOP_MOVE" }
   | { type: "JUMP"; kind: "forward" | "backflip" }
@@ -126,7 +137,7 @@ export type LobbyServerMessage =
   | { type: "PLAYER_LEFT"; playerId: string }
   | { type: "PLAYER_UPDATED"; player: LobbyPlayer }
   | { type: "CONFIG_UPDATED"; config: LobbyConfig }
-  | { type: "GAME_STARTING"; gameId: string }
+  | { type: "GAME_STARTING"; gameId: string; initPayload: GameInitPayload }
   | { type: "ERROR"; message: string }
   | { type: "CHAT"; playerId: string; displayName: string; text: string };
 
@@ -157,8 +168,20 @@ export interface TerrainDestructionEvent {
 
 export type GameServerMessage =
   | { type: "GAME_STATE_SYNC"; state: GameState }
-  | { type: "TURN_START"; activePlayerId: string; activeWormId: string; wind: number; turnTime: number }
-  | { type: "WORM_MOVED"; wormId: string; x: number; y: number; facing: "left" | "right" }
+  | {
+      type: "TURN_START";
+      activePlayerId: string;
+      activeWormId: string;
+      wind: number;
+      turnTime: number;
+    }
+  | {
+      type: "WORM_MOVED";
+      wormId: string;
+      x: number;
+      y: number;
+      facing: "left" | "right";
+    }
   | { type: "WORM_JUMPED"; wormId: string; vx: number; vy: number }
   | {
       type: "FIRE_RESULT";

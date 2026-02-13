@@ -62,6 +62,19 @@ export class GameScene extends Phaser.Scene {
     });
 
     this.socket.addEventListener("open", () => {
+      // Send INIT_GAME if we have the payload (first client to connect initializes the game)
+      const initPayloadRaw = sessionStorage.getItem("gameInitPayload");
+      if (initPayloadRaw) {
+        try {
+          const payload = JSON.parse(initPayloadRaw);
+          this.sendMessage({ type: "INIT_GAME", payload });
+        } catch {
+          // ignore parse errors
+        }
+        sessionStorage.removeItem("gameInitPayload");
+      }
+
+      // Then join the game
       this.sendMessage({ type: "JOIN_GAME", playerId: this.playerId });
     });
 
