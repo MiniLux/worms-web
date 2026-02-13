@@ -28,6 +28,18 @@ function hasSpritesheet(scene: Phaser.Scene, key: string): boolean {
 const WEAPON_AIM_SPRITES: Record<string, string> = {
   bazooka: "worm_baz",
   grenade: "worm_throw",
+  shotgun: "worm_shotg",
+};
+
+/** Weapon "draw/get" animation played when worm stops walking and has a weapon */
+const WEAPON_DRAW_SPRITES: Record<string, { texture: string; frames: number }> =
+  {
+    shotgun: { texture: "worm_shotg", frames: 32 },
+    bazooka: { texture: "worm_bazlnk", frames: 7 },
+  };
+
+/** Weapon fire animation (played once on firing) */
+const WEAPON_FIRE_SPRITES: Record<string, string> = {
   shotgun: "worm_shotf",
 };
 
@@ -49,9 +61,11 @@ export class WormEntity {
   private aimAngle: number = 0;
   private isShowingWeaponFrame: boolean = false;
   private jumpAnimPlaying: boolean = false;
+  private drawAnimPlaying: boolean = false;
   private powerGauge: Phaser.GameObjects.Graphics;
   private powerValue: number = 0;
   private showPowerGauge: boolean = false;
+  private crosshairSprite: Phaser.GameObjects.Sprite | null = null;
 
   constructor(
     private scene: Phaser.Scene,
@@ -110,6 +124,28 @@ export class WormEntity {
     this.aimLine = scene.add.graphics();
     this.aimLine.setDepth(5);
     this.aimLine.setVisible(false);
+
+    // Crosshair sprite (animated, team colored)
+    const crosshairKey =
+      teamColor === "blue" ? "crosshair_blue" : "crosshair_red";
+    if (hasSpritesheet(scene, crosshairKey)) {
+      if (!scene.anims.exists("anim_crosshair_" + crosshairKey)) {
+        scene.anims.create({
+          key: "anim_crosshair_" + crosshairKey,
+          frames: scene.anims.generateFrameNumbers(crosshairKey, {
+            start: 0,
+            end: 31,
+          }),
+          frameRate: 15,
+          repeat: -1,
+        });
+      }
+      this.crosshairSprite = scene.add.sprite(0, 0, crosshairKey, 0);
+      this.crosshairSprite.setDepth(7);
+      this.crosshairSprite.setScale(0.5);
+      this.crosshairSprite.setVisible(false);
+      this.crosshairSprite.play("anim_crosshair_" + crosshairKey);
+    }
 
     this.powerGauge = scene.add.graphics();
     this.powerGauge.setDepth(5);
@@ -325,26 +361,77 @@ export class WormEntity {
     });
   }
 
-  showAimLine(angle: number, power: number): void {
-    this.aimLine.setVisible(true);
+  /** Set walking state directly (called by GameScene on key events) */
+  setWalking(walking: boolean): void {
+    this.isWalking = walking;
+    if (!walking && this.holdingWeapon) {
+      // Play weapon draw animation when stopping, then return to aim pose
+      const drawInfo = WEAPON_DRAW_SPRITES[this.holdingWeapon];
+      if (
+        drawInfo &&
+        this.sprite &&
+        hasSpritesheet(this.scene, drawInfo.texture)
+      ) {
+        this.drawAnimPlaying = true;
+        this.isShowingWeaponFrame = false;
+        this.currentAnim = "";
+        const animKey = "draw_" + drawInfo.texture;
+        if (!this.scene.anims.exists(animKey)) {
+          this.scene.anims.create({
+            key: animKey,
+            frames: this.scene.anims.generateFrameNumbers(drawInfo.texture, {
+              start: 0,
+              end: drawInfo.frames - 1,
+            }),
+            frameRate: 20,
+            repeat: 0,
+          });
+        }
+        this.sprite.play(animKey);
+        this.sprite.once("animationcomplete", () => {
+          this.drawAnimPlaying = false;
+          this.currentAnim = "";
+        });
+      }
+    }
+  }
+
+  /** Play weapon fire animation (e.g. shotgun recoil), then return to normal */
+  playFireAnim(): void {
+    if (!this.sprite || !this.holdingWeapon) return;
+    const fireTexture = WEAPON_FIRE_SPRITES[this.holdingWeapon];
+    if (!fireTexture || !hasSpritesheet(this.scene, fireTexture)) return;
+
+    // Show the fire sprite at current aim frame briefly
+    this.applyWeaponAimFrame(fireTexture);
+    // Return to normal aim after a short delay
+    this.scene.time.delayedCall(300, () => {
+      this.isShowingWeaponFrame = false;
+      this.currentAnim = "";
+    });
+  }
+
+  showAimLine(angle: number, _power: number): void {
+    // Position crosshair sprite at fixed distance from worm
+    if (this.crosshairSprite) {
+      const distance = 100;
+      this.crosshairSprite.setPosition(
+        this.x + Math.cos(angle) * distance,
+        this.y + Math.sin(angle) * distance,
+      );
+      this.crosshairSprite.setVisible(true);
+    }
+    // Hide the old graphics line
+    this.aimLine.setVisible(false);
     this.aimLine.clear();
-
-    const length = 40 + power * 80;
-    const endX = this.x + Math.cos(angle) * length;
-    const endY = this.y + Math.sin(angle) * length;
-
-    this.aimLine.lineStyle(2, 0xffff00, 0.8);
-    this.aimLine.lineBetween(this.x, this.y, endX, endY);
-
-    const ch = 6;
-    this.aimLine.lineStyle(1, 0xff0000, 1);
-    this.aimLine.lineBetween(endX - ch, endY, endX + ch, endY);
-    this.aimLine.lineBetween(endX, endY - ch, endX, endY + ch);
   }
 
   hideAimLine(): void {
     this.aimLine.setVisible(false);
     this.aimLine.clear();
+    if (this.crosshairSprite) {
+      this.crosshairSprite.setVisible(false);
+    }
   }
 
   /** Show and update the radial power gauge near the worm */
@@ -464,6 +551,9 @@ export class WormEntity {
 
     // Jump/backflip animation takes priority while playing
     if (this.jumpAnimPlaying) return;
+
+    // Weapon draw animation takes priority
+    if (this.drawAnimPlaying) return;
 
     // Flying from knockback (not from jump — only when knocked by explosion)
     if (Math.abs(this.state.vx) > 40 || this.state.vy < -40) {
@@ -672,5 +762,6 @@ export class WormEntity {
     this.hpBar.destroy();
     this.aimLine.destroy();
     this.powerGauge.destroy();
+    this.crosshairSprite?.destroy();
   }
 }

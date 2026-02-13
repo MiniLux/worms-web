@@ -30,6 +30,7 @@ export interface WormState {
   facing: "left" | "right";
   isAlive: boolean;
   isActive: boolean;
+  pendingJump?: { vx: number; vy: number; delayMs: number };
 }
 
 export interface PlayerState {

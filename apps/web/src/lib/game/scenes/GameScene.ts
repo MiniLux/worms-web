@@ -75,6 +75,8 @@ export class GameScene extends Phaser.Scene {
       worm_shotf: { file: "wshotf.png" },
       worm_shotfd: { file: "wshotfd.png" },
       worm_shotfu: { file: "wshotfu.png" },
+      worm_shotg: { file: "wshotg.png" },
+      worm_bazlnk: { file: "wbazlnk.png" },
       worm_falldn: { file: "wfalldn.png" },
       // Fire punch sprites
       worm_japbak: { file: "wjapbak.png" },
@@ -403,10 +405,12 @@ export class GameScene extends Phaser.Scene {
         this.isMovingLeft = true;
         this.isMovingRight = false;
         this.sendMessage({ type: "MOVE_START", direction: "left" });
+        this.getActiveWorm()?.setWalking(true);
       } else if (rightDown && !this.isMovingRight) {
         this.isMovingRight = true;
         this.isMovingLeft = false;
         this.sendMessage({ type: "MOVE_START", direction: "right" });
+        this.getActiveWorm()?.setWalking(true);
       } else if (
         !leftDown &&
         !rightDown &&
@@ -415,6 +419,7 @@ export class GameScene extends Phaser.Scene {
         this.isMovingLeft = false;
         this.isMovingRight = false;
         this.sendMessage({ type: "MOVE_STOP" });
+        this.getActiveWorm()?.setWalking(false);
       }
 
       // Update power while charging
@@ -981,6 +986,11 @@ export class GameScene extends Phaser.Scene {
     let lastSmokeTime = 0;
     const smokeInterval = 80; // ms between smoke puffs
     const hasSmoke = useMissile && this.anims.exists("anim_smoke");
+    // Initialize missile angle from first two trajectory points
+    let missileAngle = Math.atan2(
+      trajectory[1].y - trajectory[0].y,
+      trajectory[1].x - trajectory[0].x,
+    );
     this.cameras.main.stopFollow();
 
     const updateEvent = this.time.addEvent({
@@ -1020,11 +1030,20 @@ export class GameScene extends Phaser.Scene {
 
         if (this.projectileSprite) {
           this.projectileSprite.setPosition(x, y);
-          // Rotate missile to face direction of travel
+          // Rotate missile smoothly using lookahead + angle lerp
           if (useMissile) {
-            const dx = b.x - a.x;
-            const dy = b.y - a.y;
-            this.projectileSprite.setRotation(Math.atan2(dy, dx));
+            const lookAhead = Math.min(index + 8, trajectory.length - 1);
+            const ldx = trajectory[lookAhead].x - trajectory[index].x;
+            const ldy = trajectory[lookAhead].y - trajectory[index].y;
+            if (Math.abs(ldx) > 0.5 || Math.abs(ldy) > 0.5) {
+              const targetAngle = Math.atan2(ldy, ldx);
+              // Lerp with wrapping to prevent jumps at ±PI boundary
+              let diff = targetAngle - missileAngle;
+              if (diff > Math.PI) diff -= 2 * Math.PI;
+              if (diff < -Math.PI) diff += 2 * Math.PI;
+              missileAngle += diff * 0.25;
+            }
+            this.projectileSprite.setRotation(missileAngle);
           }
         }
         if (this.projectileFallback) {

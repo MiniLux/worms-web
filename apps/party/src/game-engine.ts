@@ -272,6 +272,8 @@ export function processJump(
 
   // Only allow jump if worm is on the ground (not airborne or being knocked back)
   if (Math.abs(worm.vy) > 5 || Math.abs(worm.vx) > 10) return [];
+  // Don't allow jump if one is already pending
+  if (worm.pendingJump) return [];
 
   let vx: number;
   let vy: number;
@@ -284,8 +286,8 @@ export function processJump(
     vy = WORM_JUMP_VY;
   }
 
-  worm.vx = vx;
-  worm.vy = vy;
+  // Store pending jump — velocity applied after delay so animation can play
+  worm.pendingJump = { vx, vy, delayMs: 300 };
 
   return [{ type: "WORM_JUMPED", wormId: worm.id, vx, vy, kind }];
 }
@@ -319,6 +321,18 @@ export function processFire(
   const startX = worm.x + fireOffsetX;
   const startY = worm.y + fireOffsetY;
 
+  // Build worm hitbox list (exclude firing worm)
+  const targetWorms = state.players
+    .flatMap((p) => p.worms)
+    .filter((w) => w.isAlive && w.id !== worm.id)
+    .map((w) => ({
+      id: w.id,
+      x: w.x,
+      y: w.y,
+      width: WORM_WIDTH,
+      height: WORM_HEIGHT,
+    }));
+
   const result = simulateBallistic(
     startX,
     startY,
@@ -329,6 +343,7 @@ export function processFire(
     def.fuseTime,
     def.bounceElasticity,
     def.affectedByWind,
+    targetWorms,
   );
 
   const messages: GameServerMessage[] = [];

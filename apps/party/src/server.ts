@@ -235,6 +235,16 @@ export default class GameServer implements Party.Server {
       for (const worm of player.worms) {
         if (!worm.isAlive) continue;
 
+        // Count down pending jump delay
+        if (worm.pendingJump) {
+          worm.pendingJump.delayMs -= dt * 1000;
+          if (worm.pendingJump.delayMs <= 0) {
+            worm.vx = worm.pendingJump.vx;
+            worm.vy = worm.pendingJump.vy;
+            worm.pendingJump = undefined;
+          }
+        }
+
         const isActiveWorm = worm.id === this.state.activeWormId;
         const isWalking =
           isActiveWorm &&
@@ -249,7 +259,8 @@ export default class GameServer implements Party.Server {
 
         // Check if worm needs physics processing
         const hasVelocity = Math.abs(worm.vx) >= 1 || Math.abs(worm.vy) >= 1;
-        if (!isWalking && !hasVelocity) continue;
+        const hasPendingJump = !!worm.pendingJump;
+        if (!isWalking && !hasVelocity && !hasPendingJump) continue;
 
         if (hasVelocity) anySettling = true;
 

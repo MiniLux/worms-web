@@ -111,7 +111,16 @@ export interface BallisticResult {
   impactX: number;
   impactY: number;
   impactTime: number;
-  hitType: "terrain" | "water" | "outofbounds" | "fuse";
+  hitType: "terrain" | "water" | "outofbounds" | "fuse" | "worm";
+  hitWormId?: string;
+}
+
+export interface BallisticWorm {
+  id: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
 }
 
 /**
@@ -128,6 +137,7 @@ export function simulateBallistic(
   fuseTimeMs: number = 0,
   bounceElasticity: number = 0,
   affectedByWind: boolean = true,
+  worms: BallisticWorm[] = [],
 ): BallisticResult {
   const speed = power * FIRE_POWER_MULTIPLIER;
   let vx = Math.cos(angle) * speed;
@@ -135,7 +145,7 @@ export function simulateBallistic(
   let x = startX;
   let y = startY;
   const dt = PHYSICS_STEP_MS / 1000;
-  const windForce = affectedByWind ? wind * 0.3 : 0;
+  const windForce = affectedByWind ? wind * 1.0 : 0;
 
   const trajectory: TrajectoryPoint[] = [{ x, y, t: 0 }];
 
@@ -183,6 +193,24 @@ export function simulateBallistic(
         impactTime: t,
         hitType: "outofbounds",
       };
+    }
+
+    // Check worm hitbox collision (skip first few steps to avoid self-hit)
+    if (step > 3) {
+      for (const w of worms) {
+        const dx = Math.abs(Math.round(x) - w.x);
+        const dy = Math.abs(Math.round(y) - w.y);
+        if (dx < w.width / 2 + 4 && dy < w.height / 2 + 4) {
+          return {
+            trajectory,
+            impactX: Math.round(x),
+            impactY: Math.round(y),
+            impactTime: t,
+            hitType: "worm",
+            hitWormId: w.id,
+          };
+        }
+      }
     }
 
     // Check terrain collision
