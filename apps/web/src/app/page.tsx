@@ -3,13 +3,17 @@ import { redirect } from "next/navigation";
 import { LoginButton } from "@/components/LoginButton";
 
 export default async function Home() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
 
-  if (user) {
-    redirect("/dashboard");
+    if (user) {
+      redirect("/dashboard");
+    }
+  } catch {
+    // Supabase not configured yet — show landing page anyway
   }
 
   return (
