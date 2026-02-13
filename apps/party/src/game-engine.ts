@@ -287,7 +287,7 @@ export function processJump(
   worm.vx = vx;
   worm.vy = vy;
 
-  return [{ type: "WORM_JUMPED", wormId: worm.id, vx, vy }];
+  return [{ type: "WORM_JUMPED", wormId: worm.id, vx, vy, kind }];
 }
 
 export function processFire(

@@ -6,31 +6,26 @@ export function createExplosion(
   y: number,
   radius: number,
 ): void {
-  const isLarge = radius >= 30;
-  const textureKey = isLarge ? "fx_explode_large" : "fx_explode_small";
-  const hasSprite = scene.textures.exists(textureKey);
+  // Prefer the Worms 2-style fire explosion (exfoom), fall back to circle sprites
+  const hasExfoom = scene.textures.exists("fx_exfoom");
 
-  if (hasSprite) {
-    // Sprite-based explosion
-    const baseSize = isLarge ? 200 : 100;
-    const frameCount = isLarge ? 3 : 7; // circl100 = 4 frames, circle50 = 8 frames
-    const animKey = `explode_${isLarge ? "large" : "small"}`;
-
+  if (hasExfoom) {
+    const animKey = "explode_foom";
     if (!scene.anims.exists(animKey)) {
       scene.anims.create({
         key: animKey,
-        frames: scene.anims.generateFrameNumbers(textureKey, {
+        frames: scene.anims.generateFrameNumbers("fx_exfoom", {
           start: 0,
-          end: frameCount,
+          end: 19,
         }),
-        frameRate: 15,
+        frameRate: 24,
         repeat: 0,
       });
     }
 
-    const explosion = scene.add.sprite(x, y, textureKey, 0);
+    const explosion = scene.add.sprite(x, y, "fx_exfoom", 0);
     explosion.setDepth(15);
-    const scale = (radius * 2) / baseSize;
+    const scale = (radius * 2) / 100;
     explosion.setScale(scale);
     explosion.play(animKey);
     explosion.once("animationcomplete", () => explosion.destroy());
@@ -68,9 +63,9 @@ export function createExplosion(
         key: smokeAnimKey,
         frames: scene.anims.generateFrameNumbers("fx_smoke", {
           start: 0,
-          end: 7,
+          end: 27,
         }),
-        frameRate: 12,
+        frameRate: 20,
         repeat: 0,
       });
     }

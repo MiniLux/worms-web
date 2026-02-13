@@ -98,6 +98,11 @@ export class GameScene extends Phaser.Scene {
       frameWidth: 100,
       frameHeight: 100,
     });
+    // Worms 2-style fire explosion (100x100 frames, 20 frames)
+    this.load.spritesheet("fx_exfoom", "/sprites/effects/exfoom.png", {
+      frameWidth: 100,
+      frameHeight: 100,
+    });
     this.load.spritesheet("fx_smoke", "/sprites/effects/smklt50.png", {
       frameWidth: 60,
       frameHeight: 60,
@@ -452,8 +457,8 @@ export class GameScene extends Phaser.Scene {
 
       const feather = this.add.sprite(startX, startY, "fx_feather", 0);
       feather.setDepth(0.5);
-      feather.setScale(0.35);
-      feather.setAlpha(0.6);
+      feather.setScale(0.7);
+      feather.setAlpha(0.7);
       if (this.anims.exists("anim_feather")) {
         feather.play({
           key: "anim_feather",
@@ -706,10 +711,16 @@ export class GameScene extends Phaser.Scene {
     entity?.updateState({ x: msg.x, y: msg.y, facing: msg.facing });
   }
 
-  private onWormJumped(msg: { wormId: string; vx: number; vy: number }): void {
+  private onWormJumped(msg: {
+    wormId: string;
+    vx: number;
+    vy: number;
+    kind: "forward" | "backflip";
+  }): void {
     const entity = this.wormEntities.get(msg.wormId);
     if (entity) {
       entity.updateState({ vx: msg.vx, vy: msg.vy });
+      entity.playJumpAnim(msg.kind);
     }
   }
 

@@ -48,6 +48,7 @@ export class WormEntity {
   private overrideAnim: string | null = null;
   private aimAngle: number = 0;
   private isShowingWeaponFrame: boolean = false;
+  private jumpAnimPlaying: boolean = false;
   private powerGauge: Phaser.GameObjects.Graphics;
   private powerValue: number = 0;
   private showPowerGauge: boolean = false;
@@ -74,7 +75,7 @@ export class WormEntity {
         0,
       );
       this.sprite.setDepth(3);
-      this.sprite.setFlipX(initialState.facing === "left");
+      this.sprite.setFlipX(initialState.facing === "right");
       this.playAnimation("worm_idle");
     } else {
       this.fallbackBody = scene.add.ellipse(
@@ -251,7 +252,7 @@ export class WormEntity {
 
   private applyFacing(facing: "left" | "right"): void {
     if (this.sprite) {
-      this.sprite.setFlipX(facing === "left");
+      this.sprite.setFlipX(facing === "right");
     } else if (this.fallbackBody) {
       this.fallbackBody.setScale(facing === "left" ? -1 : 1, 1);
     }
@@ -288,6 +289,22 @@ export class WormEntity {
   /** Update the aim angle — used for weapon hold sprite frame selection */
   setAimAngle(angle: number): void {
     this.aimAngle = angle;
+  }
+
+  /** Play jump or backflip animation, then allow normal state machine to take over */
+  playJumpAnim(kind: "forward" | "backflip"): void {
+    if (!this.sprite) return;
+    const animKey =
+      kind === "backflip" ? "worm_backflip_anim" : "worm_jump_anim";
+    if (!this.scene.anims.exists(animKey)) return;
+    this.jumpAnimPlaying = true;
+    this.isShowingWeaponFrame = false;
+    this.currentAnim = "";
+    this.sprite.play(animKey);
+    this.sprite.once("animationcomplete", () => {
+      this.jumpAnimPlaying = false;
+      this.currentAnim = "";
+    });
   }
 
   playPunchAnim(): Promise<void> {
@@ -445,8 +462,11 @@ export class WormEntity {
     // Override animation (e.g. punch anim playing)
     if (this.overrideAnim === "worm_fist") return;
 
-    // Flying from knockback
-    if (Math.abs(this.state.vx) > 10 || this.state.vy < -20) {
+    // Jump/backflip animation takes priority while playing
+    if (this.jumpAnimPlaying) return;
+
+    // Flying from knockback (not from jump — only when knocked by explosion)
+    if (Math.abs(this.state.vx) > 40 || this.state.vy < -40) {
       this.isShowingWeaponFrame = false;
       this.playAnimation("worm_fly_anim");
       return;
@@ -492,21 +512,24 @@ export class WormEntity {
    * Each weapon has a single 32-frame sheet covering the full aim arc.
    * Frame 0 = aiming most downward (+PI/2), frame 31 = aiming most upward (-PI/2).
    *
-   * The aimAngle comes from atan2(dy, dx):
-   *   - Right-facing: 0 = horizontal, -PI/2 = up, +PI/2 = down
-   *   - Left-facing: PI = horizontal, needs to be mirrored
+   * The default (unflipped) sprite faces LEFT. So the native aim direction
+   * is left-horizontal (PI/-PI). When facing left, aimAngle maps directly.
+   * When facing right (sprite is flipped), we mirror the angle.
    */
   private applyWeaponAimFrame(textureKey: string): void {
     if (!this.sprite) return;
     if (!hasSpritesheet(this.scene, textureKey)) return;
 
-    // Convert atan2 angle to vertical angle relative to facing direction
+    // Convert atan2 angle to vertical angle relative to the sprite's native facing (LEFT)
     let vertAngle: number;
-    if (this.state.facing === "right") {
-      vertAngle = this.aimAngle;
-    } else {
+    if (this.state.facing === "left") {
+      // Native direction: aimAngle of PI = horizontal left
+      // Convert: vertAngle = PI - aimAngle mirrors around vertical axis
       vertAngle = Math.PI - this.aimAngle;
       if (vertAngle > Math.PI) vertAngle -= 2 * Math.PI;
+    } else {
+      // Flipped sprite: aimAngle of 0 = horizontal right, maps directly
+      vertAngle = this.aimAngle;
     }
 
     // Clamp to [-PI/2, PI/2]

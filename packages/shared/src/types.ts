@@ -184,7 +184,13 @@ export type GameServerMessage =
       y: number;
       facing: "left" | "right";
     }
-  | { type: "WORM_JUMPED"; wormId: string; vx: number; vy: number }
+  | {
+      type: "WORM_JUMPED";
+      wormId: string;
+      vx: number;
+      vy: number;
+      kind: "forward" | "backflip";
+    }
   | {
       type: "FIRE_RESULT";
       trajectory: TrajectoryPoint[];
