@@ -365,7 +365,8 @@ export function processFire(
     eraseCircleFromBitmap(bitmap, ex, ey, radius);
     state.terrain.bitmap = encodeBitmap(bitmap);
 
-    // Damage worms in radius
+    // Damage worms in radius — defer knockback until projectile arrives
+    const flightDelayMs = result.impactTime;
     for (const p of state.players) {
       for (const w of p.worms) {
         if (!w.isAlive) continue;
@@ -379,20 +380,20 @@ export function processFire(
           def.knockbackMultiplier,
         );
         if (kb.damage > 0) {
-          w.health = Math.max(0, w.health - kb.damage);
-          w.vx += kb.vx;
-          w.vy += kb.vy;
+          // Store pending knockback — applied after flight time
+          w.pendingKnockback = {
+            vx: kb.vx,
+            vy: kb.vy,
+            damage: kb.damage,
+            delayMs: flightDelayMs,
+          };
           damages.push({
             wormId: w.id,
             damage: kb.damage,
-            newHealth: w.health,
+            newHealth: Math.max(0, w.health - kb.damage),
             knockbackVx: kb.vx,
             knockbackVy: kb.vy,
           });
-          if (w.health <= 0) {
-            w.isAlive = false;
-            deaths.push({ wormId: w.id, cause: "hp" });
-          }
         }
       }
     }

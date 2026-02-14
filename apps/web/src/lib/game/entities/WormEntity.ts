@@ -143,7 +143,7 @@ export class WormEntity {
       }
       this.crosshairSprite = scene.add.sprite(0, 0, crosshairKey, 0);
       this.crosshairSprite.setDepth(7);
-      this.crosshairSprite.setScale(0.5);
+      this.crosshairSprite.setScale(1.0);
       this.crosshairSprite.setVisible(false);
       this.crosshairSprite.play("anim_crosshair_" + crosshairKey);
     }
@@ -743,6 +743,20 @@ export class WormEntity {
     if (hasSpritesheet(this.scene, "grave")) {
       const grave = this.scene.add.sprite(this.x, this.y, "grave", 0);
       grave.setDepth(3);
+      // Create and play idle grave animation
+      const animKey = "grave_idle";
+      if (!this.scene.anims.exists(animKey)) {
+        this.scene.anims.create({
+          key: animKey,
+          frames: this.scene.anims.generateFrameNumbers("grave", {
+            start: 0,
+            end: 19,
+          }),
+          frameRate: 5,
+          repeat: -1,
+        });
+      }
+      grave.play(animKey);
     } else {
       const rip = this.scene.add.text(this.x, this.y - 10, "RIP", {
         fontSize: "8px",

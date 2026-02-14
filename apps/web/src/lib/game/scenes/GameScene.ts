@@ -169,6 +169,9 @@ export class GameScene extends Phaser.Scene {
   // ─── Create ─────────────────────────────────────────────
 
   create(): void {
+    // Hide the default browser cursor over the game canvas
+    this.input.setDefaultCursor("none");
+
     const gameId = this.registry.get("gameId") as string;
     this.playerId = this.registry.get("playerId") as string;
     const partyHost = this.registry.get("partyHost") as string;
@@ -596,6 +599,19 @@ export class GameScene extends Phaser.Scene {
       case "TELEPORT_RESULT":
         this.onTeleportResult(msg);
         break;
+      case "WORM_DAMAGE": {
+        const entity = this.wormEntities.get(msg.wormId);
+        if (entity) {
+          entity.flashDamage(msg.damage);
+          entity.updateState({ health: msg.newHealth });
+        }
+        break;
+      }
+      case "WORM_DIED": {
+        const entity = this.wormEntities.get(msg.wormId);
+        entity?.updateState({ isAlive: false });
+        break;
+      }
       case "RETREAT_START":
         this.isAiming = false;
         this.isCharging = false;

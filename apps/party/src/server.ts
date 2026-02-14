@@ -10,6 +10,8 @@ import {
   DEFAULT_RETREAT_TIME,
   DEFAULT_TURN_TIME,
   PHYSICS_STEP_MS,
+  WORM_WIDTH,
+  WORM_HEIGHT,
   WEAPON_DEFINITIONS,
   decodeBitmap,
   encodeBitmap,
@@ -245,6 +247,32 @@ export default class GameServer implements Party.Server {
           }
         }
 
+        // Count down pending knockback (deferred from projectile impact)
+        if (worm.pendingKnockback) {
+          worm.pendingKnockback.delayMs -= dt * 1000;
+          if (worm.pendingKnockback.delayMs <= 0) {
+            const kb = worm.pendingKnockback;
+            worm.health = Math.max(0, worm.health - kb.damage);
+            worm.vx += kb.vx;
+            worm.vy += kb.vy;
+            this.broadcastAll({
+              type: "WORM_DAMAGE",
+              wormId: worm.id,
+              damage: kb.damage,
+              newHealth: worm.health,
+            });
+            if (worm.health <= 0) {
+              worm.isAlive = false;
+              this.broadcastAll({
+                type: "WORM_DIED",
+                wormId: worm.id,
+                cause: "hp",
+              });
+            }
+            worm.pendingKnockback = undefined;
+          }
+        }
+
         const isActiveWorm = worm.id === this.state.activeWormId;
         const isWalking =
           isActiveWorm &&
@@ -259,8 +287,8 @@ export default class GameServer implements Party.Server {
 
         // Check if worm needs physics processing
         const hasVelocity = Math.abs(worm.vx) >= 1 || Math.abs(worm.vy) >= 1;
-        const hasPendingJump = !!worm.pendingJump;
-        if (!isWalking && !hasVelocity && !hasPendingJump) continue;
+        const hasPending = !!worm.pendingJump || !!worm.pendingKnockback;
+        if (!isWalking && !hasVelocity && !hasPending) continue;
 
         if (hasVelocity) anySettling = true;
 
@@ -274,6 +302,29 @@ export default class GameServer implements Party.Server {
           isWalking,
           walkDir,
         );
+
+        // Check worm-to-worm collision (block walking through other worms)
+        if (isWalking) {
+          let blocked = false;
+          for (const op of this.state.players) {
+            for (const ow of op.worms) {
+              if (!ow.isAlive || ow.id === worm.id) continue;
+              const dx = Math.abs(result.x - ow.x);
+              const dy = Math.abs(result.y - ow.y);
+              if (dx < WORM_WIDTH && dy < WORM_HEIGHT) {
+                blocked = true;
+                break;
+              }
+            }
+            if (blocked) break;
+          }
+          if (blocked) {
+            result.x = worm.x;
+            result.y = worm.y;
+            result.vx = 0;
+            result.vy = 0;
+          }
+        }
 
         // Update worm state
         const posChanged =

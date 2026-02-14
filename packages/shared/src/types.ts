@@ -31,6 +31,12 @@ export interface WormState {
   isAlive: boolean;
   isActive: boolean;
   pendingJump?: { vx: number; vy: number; delayMs: number };
+  pendingKnockback?: {
+    vx: number;
+    vy: number;
+    damage: number;
+    delayMs: number;
+  };
 }
 
 export interface PlayerState {
@@ -222,6 +228,13 @@ export type GameServerMessage =
       deaths: WormDeathEvent[];
     }
   | { type: "TELEPORT_RESULT"; wormId: string; x: number; y: number }
+  | { type: "WORM_DIED"; wormId: string; cause: string }
+  | {
+      type: "WORM_DAMAGE";
+      wormId: string;
+      damage: number;
+      newHealth: number;
+    }
   | { type: "TURN_END" }
   | { type: "RETREAT_START"; timeMs: number }
   | { type: "GAME_OVER"; winnerId: string | null; reason: string }
