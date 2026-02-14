@@ -201,8 +201,8 @@ export class GameScene extends Phaser.Scene {
   // ─── Create ─────────────────────────────────────────────
 
   create(): void {
-    // Hide the default browser cursor over the game canvas
-    this.input.setDefaultCursor("none");
+    // Ensure the browser cursor stays visible over the game canvas
+    this.input.setDefaultCursor("default");
 
     const gameId = this.registry.get("gameId") as string;
     this.playerId = this.registry.get("playerId") as string;
@@ -268,7 +268,7 @@ export class GameScene extends Phaser.Scene {
           start: 0,
           end: 31,
         }),
-        frameRate: 20,
+        frameRate: 30,
         repeat: -1,
       });
     }
@@ -282,7 +282,7 @@ export class GameScene extends Phaser.Scene {
           start: 0,
           end: 31,
         }),
-        frameRate: 15,
+        frameRate: 30,
         repeat: -1,
       });
     }
@@ -296,7 +296,7 @@ export class GameScene extends Phaser.Scene {
           start: 0,
           end: 27,
         }),
-        frameRate: 24,
+        frameRate: 30,
         repeat: 0,
       });
     }
@@ -314,7 +314,7 @@ export class GameScene extends Phaser.Scene {
           start: 0,
           end: 121,
         }),
-        frameRate: 12,
+        frameRate: 30,
         repeat: -1,
       });
     }
@@ -329,7 +329,7 @@ export class GameScene extends Phaser.Scene {
           start: 0,
           end: 73,
         }),
-        frameRate: 12,
+        frameRate: 30,
         repeat: -1,
       });
     }
@@ -607,7 +607,7 @@ export class GameScene extends Phaser.Scene {
           start: 0,
           end: 31,
         }),
-        frameRate: 10,
+        frameRate: 30,
         repeat: -1,
       });
     }
@@ -666,11 +666,15 @@ export class GameScene extends Phaser.Scene {
           entity.flashDamage(msg.damage);
           entity.updateState({ health: msg.newHealth });
         }
+        this.updateGameStateWorm(msg.wormId, { health: msg.newHealth });
+        this.refreshHUDPanels();
         break;
       }
       case "WORM_DIED": {
         const entity = this.wormEntities.get(msg.wormId);
         entity?.updateState({ isAlive: false });
+        this.updateGameStateWorm(msg.wormId, { isAlive: false, health: 0 });
+        this.refreshHUDPanels();
         break;
       }
       case "RETREAT_START":
@@ -851,8 +855,11 @@ export class GameScene extends Phaser.Scene {
       }
       if (msg.newHealth <= 0) {
         entity.updateState({ isAlive: false });
+        this.updateGameStateWorm(msg.wormId, { isAlive: false, health: 0 });
       }
     }
+    this.updateGameStateWorm(msg.wormId, { health: msg.newHealth });
+    this.refreshHUDPanels();
   }
 
   private onWormFellInWater(msg: { wormId: string }): void {
@@ -860,6 +867,8 @@ export class GameScene extends Phaser.Scene {
     if (entity) {
       entity.updateState({ isAlive: false });
     }
+    this.updateGameStateWorm(msg.wormId, { isAlive: false, health: 0 });
+    this.refreshHUDPanels();
   }
 
   private onFireResult(msg: {
@@ -911,12 +920,16 @@ export class GameScene extends Phaser.Scene {
         entity.flashDamage(dmg.damage);
         entity.updateState({ health: dmg.newHealth });
       }
+      this.updateGameStateWorm(dmg.wormId, { health: dmg.newHealth });
     }
 
     for (const death of msg.deaths) {
       const entity = this.wormEntities.get(death.wormId);
       entity?.updateState({ isAlive: false });
+      this.updateGameStateWorm(death.wormId, { isAlive: false, health: 0 });
     }
+
+    this.refreshHUDPanels();
   }
 
   private onHitscanResult(msg: {
@@ -1206,6 +1219,28 @@ export class GameScene extends Phaser.Scene {
   private getActiveWorm(): WormEntity | undefined {
     if (!this.gameState) return undefined;
     return this.wormEntities.get(this.gameState.activeWormId);
+  }
+
+  /** Update a worm's health/alive status in the local gameState copy */
+  private updateGameStateWorm(
+    wormId: string,
+    patch: Partial<{ health: number; isAlive: boolean }>,
+  ): void {
+    if (!this.gameState) return;
+    for (const player of this.gameState.players) {
+      for (const worm of player.worms) {
+        if (worm.id === wormId) {
+          Object.assign(worm, patch);
+          return;
+        }
+      }
+    }
+  }
+
+  /** Re-render the HUD player panels with current gameState */
+  private refreshHUDPanels(): void {
+    if (!this.gameState) return;
+    this.scene.get("HUDScene").events.emit("state_sync", this.gameState);
   }
 
   selectWeapon(weaponId: WeaponId): void {

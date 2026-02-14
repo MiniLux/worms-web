@@ -12,10 +12,13 @@ export class HUDScene extends Phaser.Scene {
   private timerInterval: ReturnType<typeof setInterval> | null = null;
   private timeRemaining: number = 45;
 
-  // Wind display
+  // Wind display (Worms 2 style bar)
   private windContainer!: Phaser.GameObjects.Container;
+  private windBarFill!: Phaser.GameObjects.Rectangle;
   private windArrows: Phaser.GameObjects.Image[] = [];
   private windLabel!: Phaser.GameObjects.Text;
+  private readonly WIND_BAR_WIDTH = 120;
+  private readonly WIND_BAR_HEIGHT = 8;
 
   constructor() {
     super({ key: "HUDScene" });
@@ -79,18 +82,38 @@ export class HUDScene extends Phaser.Scene {
 
   private createWindDisplay(): void {
     const { width, height } = this.cameras.main;
-    this.windContainer = this.add.container(width - 20, height - 20);
+    const barW = this.WIND_BAR_WIDTH;
+    const barH = this.WIND_BAR_HEIGHT;
+    // Position: bottom-right, bar centered on this anchor
+    const cx = width - 20 - barW / 2;
+    const cy = height - 16;
+    this.windContainer = this.add.container(cx, cy);
     this.windContainer.setDepth(20);
 
+    // Bar background (dark)
+    const barBg = this.add
+      .rectangle(0, 0, barW, barH, 0x111111, 0.9)
+      .setStrokeStyle(1, 0x444444);
+    this.windContainer.add(barBg);
+
+    // Center divider line
+    const divider = this.add.rectangle(0, 0, 2, barH + 2, 0xffffff, 0.8);
+    this.windContainer.add(divider);
+
+    // Fill bar (starts at 0 width, will be resized in updateWind)
+    this.windBarFill = this.add.rectangle(0, 0, 0, barH - 2, 0x44aaff);
+    this.windContainer.add(this.windBarFill);
+
+    // "WIND" label above
     this.windLabel = this.add
-      .text(0, 0, "WIND", {
-        fontSize: "8px",
+      .text(0, -(barH / 2 + 2), "WIND", {
+        fontSize: "7px",
         fontFamily: "monospace",
         color: "#aaaaaa",
         stroke: "#000000",
         strokeThickness: 1,
       })
-      .setOrigin(1, 1);
+      .setOrigin(0.5, 1);
     this.windContainer.add(this.windLabel);
   }
 
@@ -99,53 +122,61 @@ export class HUDScene extends Phaser.Scene {
     for (const arrow of this.windArrows) arrow.destroy();
     this.windArrows = [];
 
+    const barW = this.WIND_BAR_WIDTH;
+    const barH = this.WIND_BAR_HEIGHT;
+    const halfBar = barW / 2;
     const absWind = Math.abs(wind);
-    if (absWind < 3) {
-      this.windLabel.setText("WIND: calm");
-      return;
+    const maxWind = 100;
+    const pct = Math.min(1, absWind / maxWind);
+
+    // Fill bar: extends from center toward the wind direction
+    const fillWidth = pct * (halfBar - 1);
+
+    // Color: green (low) → yellow (medium) → red (high)
+    let fillColor: number;
+    if (pct < 0.33) fillColor = 0x44cc44;
+    else if (pct < 0.66) fillColor = 0xcccc44;
+    else fillColor = 0xcc4444;
+
+    this.windBarFill.setFillStyle(fillColor);
+    this.windBarFill.setSize(fillWidth, barH - 2);
+
+    if (wind > 0) {
+      // Fill extends right from center
+      this.windBarFill.setOrigin(0, 0.5);
+      this.windBarFill.setPosition(1, 0);
+    } else if (wind < 0) {
+      // Fill extends left from center
+      this.windBarFill.setOrigin(1, 0.5);
+      this.windBarFill.setPosition(-1, 0);
+    } else {
+      this.windBarFill.setSize(0, 0);
     }
 
-    this.windLabel.setText("WIND");
+    // Place small arrow indicators alongside the bar
+    if (absWind >= 3) {
+      const arrowCount = Math.min(6, Math.max(1, Math.ceil(absWind / 16)));
+      const textureKey = wind > 0 ? "wind_right" : "wind_left";
+      const hasTexture = this.textures.exists(textureKey);
 
-    // Number of arrows based on wind strength (1-5)
-    const arrowCount = Math.min(5, Math.max(1, Math.ceil(absWind / 20)));
-    const textureKey = wind > 0 ? "wind_right" : "wind_left";
-    const hasTexture = this.textures.exists(textureKey);
+      if (hasTexture) {
+        const arrowW = 14;
 
-    if (!hasTexture) {
-      // Fallback to text arrows
-      const dir = wind > 0 ? ">" : "<";
-      this.windLabel.setText("WIND " + dir.repeat(arrowCount));
-      return;
+        for (let i = 0; i < arrowCount; i++) {
+          // Right wind: arrows go right of bar; Left wind: arrows go left of bar
+          const x =
+            wind > 0
+              ? halfBar + 4 + i * arrowW + arrowW / 2
+              : -(halfBar + 4 + i * arrowW + arrowW / 2);
+          const arrow = this.add.image(x, 0, textureKey);
+          arrow.setDisplaySize(12, barH);
+          arrow.setOrigin(0.5, 0.5);
+          arrow.setTint(fillColor);
+          this.windContainer.add(arrow);
+          this.windArrows.push(arrow);
+        }
+      }
     }
-
-    // Stack arrows horizontally
-    const arrowWidth = 20; // display width per arrow
-    const startX = -arrowCount * arrowWidth;
-
-    for (let i = 0; i < arrowCount; i++) {
-      const arrow = this.add.image(
-        startX + i * arrowWidth + arrowWidth / 2,
-        -14,
-        textureKey,
-      );
-      arrow.setDisplaySize(18, 6);
-      arrow.setOrigin(0.5, 0.5);
-      // Color arrows based on wind strength: green → yellow → red
-      const t = i / Math.max(1, arrowCount - 1);
-      const tint = this.getWindTint(t, absWind);
-      arrow.setTint(tint);
-      this.windContainer.add(arrow);
-      this.windArrows.push(arrow);
-    }
-  }
-
-  private getWindTint(t: number, absWind: number): number {
-    // Low wind: green, medium: yellow, high: red
-    const intensity = absWind / 100;
-    if (intensity < 0.33) return 0x44ff44;
-    if (intensity < 0.66) return 0xffff44;
-    return 0xff4444;
   }
 
   // ─── Event Handlers ────────────────────────────────────

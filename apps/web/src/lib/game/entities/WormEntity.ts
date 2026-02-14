@@ -150,7 +150,7 @@ export class WormEntity {
             start: 0,
             end: 31,
           }),
-          frameRate: 15,
+          frameRate: 30,
           repeat: -1,
         });
       }
@@ -180,29 +180,29 @@ export class WormEntity {
         key: "worm_idle",
         texture: "worm_breath",
         end: 19,
-        rate: 7,
+        rate: 30,
         repeat: -1,
       },
-      { key: "worm_walk", texture: "worm_walk", end: 14, rate: 15, repeat: -1 },
+      { key: "worm_walk", texture: "worm_walk", end: 14, rate: 30, repeat: -1 },
       {
         key: "worm_jump_anim",
         texture: "worm_jump",
         end: 9,
-        rate: 15,
+        rate: 30,
         repeat: 0,
       },
       {
         key: "worm_backflip_anim",
         texture: "worm_backflip",
         end: 21,
-        rate: 20,
+        rate: 30,
         repeat: 0,
       },
       {
         key: "worm_fall_anim",
         texture: "worm_fall",
         end: 1,
-        rate: 8,
+        rate: 30,
         repeat: -1,
       },
       {
@@ -216,14 +216,14 @@ export class WormEntity {
         key: "worm_fly_anim",
         texture: "worm_fly",
         end: 31,
-        rate: 20,
+        rate: 30,
         repeat: -1,
       },
       {
         key: "worm_blink_anim",
         texture: "worm_blink",
         end: 5,
-        rate: 10,
+        rate: 30,
         repeat: 0,
       },
       // Fire punch
@@ -231,10 +231,10 @@ export class WormEntity {
         key: "worm_japbak",
         texture: "worm_japbak",
         end: 8,
-        rate: 7,
+        rate: 30,
         repeat: -1,
       },
-      { key: "worm_fist", texture: "worm_fist", end: 16, rate: 24, repeat: 0 },
+      { key: "worm_fist", texture: "worm_fist", end: 16, rate: 30, repeat: 0 },
       {
         key: "worm_firblast",
         texture: "worm_firblast",
@@ -365,7 +365,7 @@ export class WormEntity {
           start: 0,
           end: 29,
         }),
-        frameRate: 15,
+        frameRate: 30,
         repeat: -1,
       });
     }
@@ -471,7 +471,7 @@ export class WormEntity {
               start: 0,
               end: drawInfo.frames - 1,
             }),
-            frameRate: 20,
+            frameRate: 30,
             repeat: 0,
           });
         }
@@ -823,7 +823,7 @@ export class WormEntity {
             start: 0,
             end: 19,
           }),
-          frameRate: 5,
+          frameRate: 30,
           repeat: -1,
         });
       }
