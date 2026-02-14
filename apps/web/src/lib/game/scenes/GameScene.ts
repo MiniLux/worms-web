@@ -180,6 +180,22 @@ export class GameScene extends Phaser.Scene {
     this.load.image("wind_left", "/sprites/misc/windl.png");
     this.load.image("wind_right", "/sprites/misc/windr.png");
 
+    // Bitmap font (12px, 62 frames: A-Z=0-25, a-z=26-51, 0-9=52-61)
+    this.load.spritesheet("font12", "/sprites/misc/font12.png", {
+      frameWidth: 12,
+      frameHeight: 12,
+    });
+
+    // Terrain textures (forest theme)
+    this.load.image("terrain_soil", "/sprites/terrain/soil.png");
+    this.load.image("terrain_grass", "/sprites/terrain/grass.png");
+    this.load.image("terrain_gradient", "/sprites/terrain/gradient.png");
+    this.load.image("terrain_back", "/sprites/terrain/back.png");
+    this.load.spritesheet("terrain_debris", "/sprites/terrain/debris.png", {
+      frameWidth: 22,
+      frameHeight: 22,
+    });
+
     // Weapon icons (single 32x32 images)
     this.load.image("icon_bazooka", "/sprites/icons/bazooka.1.png");
     this.load.image("icon_shotgun", "/sprites/icons/shotgun.1.png");
@@ -293,6 +309,22 @@ export class GameScene extends Phaser.Scene {
   }
 
   private createWindParticleAnims(): void {
+    // Debris sprites (forest theme wind particles: 122 frames of 22x22)
+    if (
+      this.textures.exists("terrain_debris") &&
+      !this.anims.exists("anim_debris")
+    ) {
+      this.anims.create({
+        key: "anim_debris",
+        frames: this.anims.generateFrameNumbers("terrain_debris", {
+          start: 0,
+          end: 121,
+        }),
+        frameRate: 12,
+        repeat: -1,
+      });
+    }
+    // Feather fallback
     if (
       this.textures.exists("fx_feather") &&
       !this.anims.exists("anim_feather")
@@ -476,7 +508,14 @@ export class GameScene extends Phaser.Scene {
   private spawnWindParticles(): void {
     this.destroyWindParticles();
     if (Math.abs(this.currentWind) < 5) return;
-    if (!this.textures.exists("fx_feather")) return;
+
+    const useDebris = this.textures.exists("terrain_debris");
+    const useFeather = this.textures.exists("fx_feather");
+    if (!useDebris && !useFeather) return;
+
+    const textureKey = useDebris ? "terrain_debris" : "fx_feather";
+    const animKey = useDebris ? "anim_debris" : "anim_feather";
+    const totalFrames = useDebris ? 122 : 74;
 
     const count = Math.min(
       8,
@@ -491,18 +530,18 @@ export class GameScene extends Phaser.Scene {
           : camBounds.right + 60 + Math.random() * 200;
       const startY = camBounds.top + Math.random() * camBounds.height;
 
-      const feather = this.add.sprite(startX, startY, "fx_feather", 0);
-      feather.setDepth(0.5);
-      feather.setScale(0.7);
-      feather.setAlpha(0.7);
-      if (this.anims.exists("anim_feather")) {
-        feather.play({
-          key: "anim_feather",
-          startFrame: Math.floor(Math.random() * 74),
+      const particle = this.add.sprite(startX, startY, textureKey, 0);
+      particle.setDepth(0.5);
+      particle.setScale(useDebris ? 1.0 : 0.7);
+      particle.setAlpha(0.7);
+      if (this.anims.exists(animKey)) {
+        particle.play({
+          key: animKey,
+          startFrame: Math.floor(Math.random() * totalFrames),
         });
       }
-      if (this.currentWind < 0) feather.setFlipX(true);
-      this.windParticles.push(feather);
+      if (this.currentWind < 0) particle.setFlipX(true);
+      this.windParticles.push(particle);
     }
   }
 

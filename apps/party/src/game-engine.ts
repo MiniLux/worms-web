@@ -43,7 +43,7 @@ import type { SpawnPoint } from "./terrain";
 
 export function initializeGame(payload: GameInitPayload): GameState {
   const seed = Date.now();
-  const theme = payload.config.terrainTheme || "prairie";
+  const theme = payload.config.terrainTheme || "forest";
   const terrain = generateTerrain(seed, theme);
   const hp = payload.config.hp || DEFAULT_HP;
   const wormsPerTeam = payload.config.wormsPerTeam || DEFAULT_WORMS_PER_TEAM;

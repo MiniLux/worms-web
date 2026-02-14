@@ -29,7 +29,7 @@ export default class LobbyServer implements Party.Server {
         wormsPerTeam: DEFAULT_WORMS_PER_TEAM,
         hp: DEFAULT_HP,
         turnTime: DEFAULT_TURN_TIME,
-        terrainTheme: "prairie",
+        terrainTheme: "forest",
       },
     };
   }

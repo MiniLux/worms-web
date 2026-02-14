@@ -46,4 +46,5 @@ export const TERRAIN_THEMES = [
   "cheese",
   "urban",
   "mars",
+  "forest",
 ] as const;

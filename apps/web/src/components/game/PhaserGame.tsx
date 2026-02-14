@@ -34,7 +34,7 @@ export default function PhaserGame({ gameId, playerId, partyHost }: Props) {
         mouse: true,
       },
       fps: {
-        target: 30,
+        target: 60,
         forceSetTimeOut: true,
       },
       render: {

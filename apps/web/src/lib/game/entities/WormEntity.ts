@@ -8,15 +8,88 @@ const COLOR_MAP: Record<TeamColor, number> = {
   yellow: 0xeab308,
 };
 
-const COLOR_HEX: Record<TeamColor, string> = {
-  red: "#ef4444",
-  blue: "#3b82f6",
-  green: "#22c55e",
-  yellow: "#eab308",
-};
-
 function hasSpritesheet(scene: Phaser.Scene, key: string): boolean {
   return scene.textures.exists(key) && key !== "__MISSING";
+}
+
+/** Map character to font12 spritesheet frame index */
+function charToFrame(ch: string): number {
+  const code = ch.charCodeAt(0);
+  if (code >= 65 && code <= 90) return code - 65; // A-Z → 0-25
+  if (code >= 97 && code <= 122) return code - 97 + 26; // a-z → 26-51
+  if (code >= 48 && code <= 57) return code - 48 + 52; // 0-9 → 52-61
+  return -1; // unsupported character (space, punctuation)
+}
+
+/** Create a row of bitmap font sprites for a text string */
+function createBitmapText(
+  scene: Phaser.Scene,
+  text: string,
+  x: number,
+  y: number,
+  tint: number,
+  depth: number,
+): Phaser.GameObjects.Container {
+  const container = scene.add.container(x, y);
+  container.setDepth(depth);
+
+  if (!hasSpritesheet(scene, "font12")) return container;
+
+  const charSpacing = 8; // tighter than 12px cell — glyphs are ~6px wide
+  const totalWidth = text.length * charSpacing;
+  let cx = -totalWidth / 2;
+
+  for (const ch of text) {
+    if (ch === " ") {
+      cx += charSpacing;
+      continue;
+    }
+    const frame = charToFrame(ch);
+    if (frame < 0) {
+      cx += charSpacing;
+      continue;
+    }
+    const sprite = scene.add.sprite(cx, 0, "font12", frame);
+    sprite.setOrigin(0, 0.5);
+    sprite.setTint(tint);
+    container.add(sprite);
+    cx += charSpacing;
+  }
+
+  return container;
+}
+
+/** Update existing bitmap text container with new text */
+function updateBitmapText(
+  container: Phaser.GameObjects.Container,
+  scene: Phaser.Scene,
+  text: string,
+  tint: number,
+): void {
+  container.removeAll(true);
+
+  if (!hasSpritesheet(scene, "font12")) return;
+
+  const charSpacing = 8;
+  const totalWidth = text.length * charSpacing;
+  let cx = -totalWidth / 2;
+
+  for (const ch of text) {
+    if (ch === " ") {
+      cx += charSpacing;
+      continue;
+    }
+    const frame = charToFrame(ch);
+    if (frame < 0) {
+      cx += charSpacing;
+      continue;
+    }
+    const sprite = scene.add.sprite(cx, 0, "font12", frame);
+    sprite.setOrigin(0, 0.5);
+    sprite.setTint(tint);
+    container.add(sprite);
+    cx += charSpacing;
+  }
 }
 
 /**
@@ -46,8 +119,8 @@ const WEAPON_FIRE_SPRITES: Record<string, string> = {
 export class WormEntity {
   private sprite: Phaser.GameObjects.Sprite | null = null;
   private fallbackBody: Phaser.GameObjects.Ellipse | null = null;
-  private nameText: Phaser.GameObjects.Text;
-  private hpText: Phaser.GameObjects.Text;
+  private nameText: Phaser.GameObjects.Container;
+  private hpText: Phaser.GameObjects.Container;
   private aimLine: Phaser.GameObjects.Graphics;
   private state: WormState;
   private targetX: number;
@@ -105,35 +178,23 @@ export class WormEntity {
       this.fallbackBody.setDepth(3);
     }
 
-    this.nameText = scene.add.text(
+    this.nameText = createBitmapText(
+      scene,
+      initialState.name,
       initialState.x,
       initialState.y - 30,
-      initialState.name,
-      {
-        fontSize: "10px",
-        fontFamily: "monospace",
-        color: "#ffffff",
-        stroke: "#000000",
-        strokeThickness: 2,
-      },
+      0xffffff,
+      4,
     );
-    this.nameText.setOrigin(0.5, 1);
-    this.nameText.setDepth(4);
 
-    this.hpText = scene.add.text(
+    this.hpText = createBitmapText(
+      scene,
+      String(initialState.health),
       initialState.x,
       initialState.y - 19,
-      String(initialState.health),
-      {
-        fontSize: "10px",
-        fontFamily: "monospace",
-        color: COLOR_HEX[teamColor] ?? "#ffffff",
-        stroke: "#000000",
-        strokeThickness: 2,
-      },
+      color,
+      4,
     );
-    this.hpText.setOrigin(0.5, 1);
-    this.hpText.setDepth(4);
 
     this.aimLine = scene.add.graphics();
     this.aimLine.setDepth(5);
@@ -288,7 +349,12 @@ export class WormEntity {
     }
 
     if (newState.health !== undefined) {
-      this.hpText.setText(String(this.state.health));
+      updateBitmapText(
+        this.hpText,
+        this.scene,
+        String(this.state.health),
+        COLOR_MAP[this.teamColor] ?? 0xffffff,
+      );
     }
     if (newState.isAlive === false && !this.isDead) {
       this.die();
