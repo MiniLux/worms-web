@@ -167,11 +167,18 @@ export class TerrainRenderer {
 
   /** Extract pixel data from a Phaser texture using a temporary DOM canvas */
   private extractImageData(key: string): ImageData | null {
-    if (!this.scene.textures.exists(key)) return null;
-    const source = this.scene.textures.get(key).getSourceImage();
+    if (!this.scene.textures.exists(key)) {
+      console.warn(`[TerrainRenderer] texture "${key}" not found`);
+      return null;
+    }
+    const tex = this.scene.textures.get(key);
+    const source = tex.getSourceImage() as HTMLImageElement;
+    if (!source || !source.width || !source.height) {
+      console.warn(`[TerrainRenderer] texture "${key}" source invalid`);
+      return null;
+    }
     const w = source.width;
     const h = source.height;
-    // Use DOM canvas (not OffscreenCanvas) because getSourceImage returns HTMLImageElement
     const tmpCanvas = document.createElement("canvas");
     tmpCanvas.width = w;
     tmpCanvas.height = h;
@@ -186,6 +193,9 @@ export class TerrainRenderer {
       this.soilData = soilImgData;
       this.soilW = soilImgData.width;
       this.soilH = soilImgData.height;
+      console.log(`[TerrainRenderer] soil loaded: ${this.soilW}x${this.soilH}`);
+    } else {
+      console.warn("[TerrainRenderer] soil texture failed to load");
     }
 
     const grassImgData = this.extractImageData("terrain_grass");
@@ -193,12 +203,16 @@ export class TerrainRenderer {
       this.grassData = grassImgData;
       this.grassW = grassImgData.width;
       this.grassH = grassImgData.height;
+      console.log(
+        `[TerrainRenderer] grass loaded: ${this.grassW}x${this.grassH}`,
+      );
     }
 
     const gradImgData = this.extractImageData("terrain_gradient");
     if (gradImgData) {
       this.gradientData = gradImgData;
       this.gradientH = gradImgData.height;
+      console.log(`[TerrainRenderer] gradient loaded: h=${this.gradientH}`);
     }
   }
 
