@@ -158,6 +158,28 @@ export class GameScene extends Phaser.Scene {
       frameHeight: 60,
     });
 
+    // Turn indicator arrows (60x60 frames, 30 frames each)
+    this.load.spritesheet("arrowdn_red", "/sprites/misc/arrowdnr.png", {
+      frameWidth: 60,
+      frameHeight: 60,
+    });
+    this.load.spritesheet("arrowdn_blue", "/sprites/misc/arrowdnb.png", {
+      frameWidth: 60,
+      frameHeight: 60,
+    });
+    this.load.spritesheet("arrowdn_green", "/sprites/misc/arrowdng.png", {
+      frameWidth: 60,
+      frameHeight: 60,
+    });
+    this.load.spritesheet("arrowdn_yellow", "/sprites/misc/arrowdny.png", {
+      frameWidth: 60,
+      frameHeight: 60,
+    });
+
+    // Wind arrows
+    this.load.image("wind_left", "/sprites/misc/windl.png");
+    this.load.image("wind_right", "/sprites/misc/windr.png");
+
     // Weapon icons (single 32x32 images)
     this.load.image("icon_bazooka", "/sprites/icons/bazooka.1.png");
     this.load.image("icon_shotgun", "/sprites/icons/shotgun.1.png");
@@ -392,6 +414,12 @@ export class GameScene extends Phaser.Scene {
         this.selectWeapon(MVP_WEAPON_IDS[i]);
       });
     }
+
+    // Hide bouncing arrow on any keypress during my turn
+    this.input.keyboard!.on("keydown", () => {
+      if (!this.isMyTurn) return;
+      this.getActiveWorm()?.hideArrow();
+    });
   }
 
   // ─── Update Loop ────────────────────────────────────────

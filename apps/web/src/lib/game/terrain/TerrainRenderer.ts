@@ -62,6 +62,9 @@ export class TerrainRenderer {
   private texture: Phaser.Textures.CanvasTexture;
   private image: Phaser.GameObjects.Image;
   private waterRect: Phaser.GameObjects.Rectangle;
+  private waterWave: Phaser.GameObjects.Graphics;
+  private waveTime: number = 0;
+  private waveUpdateEvent: Phaser.Time.TimerEvent | null = null;
   private background: Phaser.GameObjects.Graphics;
   private theme: TerrainTheme;
 
@@ -110,6 +113,93 @@ export class TerrainRenderer {
       0.7,
     );
     this.waterRect.setDepth(2);
+
+    // Animated wave overlay at water surface
+    this.waterWave = scene.add.graphics();
+    this.waterWave.setDepth(2.5);
+    this.drawWave();
+
+    // Animate wave
+    this.waveUpdateEvent = scene.time.addEvent({
+      delay: 50,
+      loop: true,
+      callback: () => {
+        this.waveTime += 0.08;
+        this.drawWave();
+      },
+    });
+  }
+
+  private drawWave(): void {
+    this.waterWave.clear();
+    const colors = THEME_COLORS[this.theme];
+    const waterColor = parseInt(colors.water.replace("#", ""), 16);
+
+    // Extract RGB components for lighter/darker variants
+    const r = (waterColor >> 16) & 0xff;
+    const g = (waterColor >> 8) & 0xff;
+    const b = waterColor & 0xff;
+    const lighterColor =
+      (Math.min(255, r + 60) << 16) |
+      (Math.min(255, g + 60) << 8) |
+      Math.min(255, b + 60);
+    const whiteHighlight = 0xffffff;
+
+    // Draw 3 overlapping sine wave bands at the water surface
+    const waveY = WATER_LEVEL;
+    const startX = -100;
+    const endX = TERRAIN_WIDTH + 100;
+    const step = 4;
+
+    // Wave 1: main wave (white highlight, thin)
+    this.waterWave.lineStyle(2, whiteHighlight, 0.6);
+    this.waterWave.beginPath();
+    for (let x = startX; x <= endX; x += step) {
+      const y =
+        waveY +
+        Math.sin(x * 0.02 + this.waveTime) * 3 +
+        Math.sin(x * 0.035 + this.waveTime * 1.3) * 2;
+      if (x === startX) {
+        this.waterWave.moveTo(x, y);
+      } else {
+        this.waterWave.lineTo(x, y);
+      }
+    }
+    this.waterWave.strokePath();
+
+    // Wave 2: secondary wave (lighter water color, offset)
+    this.waterWave.lineStyle(3, lighterColor, 0.5);
+    this.waterWave.beginPath();
+    for (let x = startX; x <= endX; x += step) {
+      const y =
+        waveY +
+        4 +
+        Math.sin(x * 0.025 + this.waveTime * 0.8 + 1.5) * 2.5 +
+        Math.sin(x * 0.015 + this.waveTime * 1.1) * 1.5;
+      if (x === startX) {
+        this.waterWave.moveTo(x, y);
+      } else {
+        this.waterWave.lineTo(x, y);
+      }
+    }
+    this.waterWave.strokePath();
+
+    // Wave 3: subtle foam highlights
+    this.waterWave.lineStyle(1, whiteHighlight, 0.3);
+    this.waterWave.beginPath();
+    for (let x = startX; x <= endX; x += step) {
+      const y =
+        waveY -
+        2 +
+        Math.sin(x * 0.03 + this.waveTime * 1.5 + 3.0) * 2 +
+        Math.sin(x * 0.01 + this.waveTime * 0.6) * 3;
+      if (x === startX) {
+        this.waterWave.moveTo(x, y);
+      } else {
+        this.waterWave.lineTo(x, y);
+      }
+    }
+    this.waterWave.strokePath();
   }
 
   getBitmap(): Uint8Array {
@@ -238,6 +328,11 @@ export class TerrainRenderer {
   destroy(): void {
     this.image.destroy();
     this.waterRect.destroy();
+    this.waterWave.destroy();
+    if (this.waveUpdateEvent) {
+      this.waveUpdateEvent.destroy();
+      this.waveUpdateEvent = null;
+    }
     this.background.destroy();
     if (this.scene.textures.exists("terrain")) {
       this.scene.textures.remove("terrain");

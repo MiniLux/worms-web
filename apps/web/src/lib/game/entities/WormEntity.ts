@@ -47,7 +47,7 @@ export class WormEntity {
   private sprite: Phaser.GameObjects.Sprite | null = null;
   private fallbackBody: Phaser.GameObjects.Ellipse | null = null;
   private nameText: Phaser.GameObjects.Text;
-  private hpBar: Phaser.GameObjects.Graphics;
+  private hpText: Phaser.GameObjects.Text;
   private aimLine: Phaser.GameObjects.Graphics;
   private state: WormState;
   private targetX: number;
@@ -67,6 +67,8 @@ export class WormEntity {
   private powerValue: number = 0;
   private showPowerGauge: boolean = false;
   private crosshairSprite: Phaser.GameObjects.Sprite | null = null;
+  private arrowSprite: Phaser.GameObjects.Sprite | null = null;
+  private labelsHidden: boolean = false;
 
   constructor(
     private scene: Phaser.Scene,
@@ -105,8 +107,23 @@ export class WormEntity {
 
     this.nameText = scene.add.text(
       initialState.x,
-      initialState.y - 28,
+      initialState.y - 30,
       initialState.name,
+      {
+        fontSize: "10px",
+        fontFamily: "monospace",
+        color: "#ffffff",
+        stroke: "#000000",
+        strokeThickness: 2,
+      },
+    );
+    this.nameText.setOrigin(0.5, 1);
+    this.nameText.setDepth(4);
+
+    this.hpText = scene.add.text(
+      initialState.x,
+      initialState.y - 19,
+      String(initialState.health),
       {
         fontSize: "10px",
         fontFamily: "monospace",
@@ -115,12 +132,8 @@ export class WormEntity {
         strokeThickness: 2,
       },
     );
-    this.nameText.setOrigin(0.5, 1);
-    this.nameText.setDepth(4);
-
-    this.hpBar = scene.add.graphics();
-    this.hpBar.setDepth(4);
-    this.drawHpBar();
+    this.hpText.setOrigin(0.5, 1);
+    this.hpText.setDepth(4);
 
     this.aimLine = scene.add.graphics();
     this.aimLine.setDepth(5);
@@ -275,7 +288,7 @@ export class WormEntity {
     }
 
     if (newState.health !== undefined) {
-      this.drawHpBar();
+      this.hpText.setText(String(this.state.health));
     }
     if (newState.isAlive === false && !this.isDead) {
       this.die();
@@ -304,12 +317,66 @@ export class WormEntity {
         this.fallbackBody.setStrokeStyle(0);
       }
     }
-    if (!active) {
+    if (active) {
+      // Hide name/HP during active turn
+      this.labelsHidden = true;
+      this.nameText.setVisible(false);
+      this.hpText.setVisible(false);
+      // Show bouncing arrow above head
+      this.showArrow();
+    } else {
+      // Show name/HP when turn ends
+      this.labelsHidden = false;
+      if (!this.isDead) {
+        this.nameText.setVisible(true);
+        this.hpText.setVisible(true);
+      }
+      this.hideArrow();
       this.hideAimLine();
       this.hidePowerGauge();
       this.holdingWeapon = null;
       this.overrideAnim = null;
       this.isShowingWeaponFrame = false;
+    }
+  }
+
+  /** Show bouncing arrow above the active worm */
+  private showArrow(): void {
+    this.hideArrow();
+    const arrowMap: Record<string, string> = {
+      red: "arrowdn_red",
+      blue: "arrowdn_blue",
+      green: "arrowdn_green",
+      yellow: "arrowdn_yellow",
+    };
+    const key = arrowMap[this.teamColor] ?? "arrowdn_red";
+    if (!hasSpritesheet(this.scene, key)) return;
+
+    this.arrowSprite = this.scene.add.sprite(this.x, this.y - 50, key, 0);
+    this.arrowSprite.setDepth(8);
+    this.arrowSprite.setScale(0.7);
+
+    // Create arrow animation if not exists
+    const animKey = "anim_" + key;
+    if (!this.scene.anims.exists(animKey)) {
+      this.scene.anims.create({
+        key: animKey,
+        frames: this.scene.anims.generateFrameNumbers(key, {
+          start: 0,
+          end: 29,
+        }),
+        frameRate: 15,
+        repeat: -1,
+      });
+    }
+    this.arrowSprite.play(animKey);
+  }
+
+  /** Hide the bouncing arrow (called on keypress or turn end) */
+  hideArrow(): void {
+    if (this.arrowSprite) {
+      this.arrowSprite.destroy();
+      this.arrowSprite = null;
     }
   }
 
@@ -558,8 +625,12 @@ export class WormEntity {
       this.fallbackBody.y = newY;
     }
 
-    this.nameText.setPosition(newX, newY - 28);
-    this.drawHpBar();
+    this.nameText.setPosition(newX, newY - 30);
+    this.hpText.setPosition(newX, newY - 19);
+    if (this.arrowSprite) {
+      const bounce = Math.sin(this.scene.time.now * 0.005) * 6;
+      this.arrowSprite.setPosition(newX, newY - 50 + bounce);
+    }
     if (this.showPowerGauge) this.drawPowerGauge();
     this.updateAnimationState();
   }
@@ -734,8 +805,9 @@ export class WormEntity {
       this.showGrave();
     }
 
-    this.nameText.setAlpha(0.5);
-    this.hpBar.setVisible(false);
+    this.nameText.setVisible(false);
+    this.hpText.setVisible(false);
+    this.hideArrow();
     this.hideAimLine();
   }
 
@@ -770,33 +842,14 @@ export class WormEntity {
     }
   }
 
-  private drawHpBar(): void {
-    this.hpBar.clear();
-    const barWidth = 28;
-    const barHeight = 4;
-    const x = this.x - barWidth / 2;
-    const y = this.y - 22;
-
-    this.hpBar.fillStyle(0x000000, 0.7);
-    this.hpBar.fillRect(x - 1, y - 1, barWidth + 2, barHeight + 2);
-
-    const pct = Math.max(0, this.state.health / 100);
-    const color = pct > 0.5 ? 0x22c55e : pct > 0.25 ? 0xeab308 : 0xef4444;
-    this.hpBar.fillStyle(color, 1);
-    this.hpBar.fillRect(x, y, barWidth * pct, barHeight);
-
-    const teamColor = COLOR_MAP[this.teamColor] ?? 0xffffff;
-    this.hpBar.fillStyle(teamColor, 1);
-    this.hpBar.fillRect(x, y + barHeight + 1, barWidth, 2);
-  }
-
   destroy(): void {
     this.sprite?.destroy();
     this.fallbackBody?.destroy();
     this.nameText.destroy();
-    this.hpBar.destroy();
+    this.hpText.destroy();
     this.aimLine.destroy();
     this.powerGauge.destroy();
     this.crosshairSprite?.destroy();
+    this.hideArrow();
   }
 }

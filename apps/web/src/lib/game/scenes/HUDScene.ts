@@ -1,22 +1,21 @@
 import * as Phaser from "phaser";
-import type { GameState, GameServerMessage, WeaponId } from "@worms/shared";
+import type { GameState, WeaponId } from "@worms/shared";
 import { WEAPON_DEFINITIONS, MVP_WEAPON_IDS } from "@worms/shared";
 import { GameScene } from "./GameScene";
 
 export class HUDScene extends Phaser.Scene {
   private timerText!: Phaser.GameObjects.Text;
-  private windText!: Phaser.GameObjects.Text;
   private turnText!: Phaser.GameObjects.Text;
-  private powerBar!: Phaser.GameObjects.Graphics;
-  private powerLabel!: Phaser.GameObjects.Text;
   private weaponButtons: Phaser.GameObjects.Container[] = [];
-  private weaponPanel: Phaser.GameObjects.Container | null = null;
   private playerPanels: Phaser.GameObjects.Container[] = [];
   private playerId: string = "";
   private timerInterval: ReturnType<typeof setInterval> | null = null;
   private timeRemaining: number = 45;
-  private currentPower: number = 0.5;
-  private showingPower: boolean = false;
+
+  // Wind display
+  private windContainer!: Phaser.GameObjects.Container;
+  private windArrows: Phaser.GameObjects.Image[] = [];
+  private windLabel!: Phaser.GameObjects.Text;
 
   constructor() {
     super({ key: "HUDScene" });
@@ -26,29 +25,19 @@ export class HUDScene extends Phaser.Scene {
     this.playerId = this.registry.get("playerId") as string;
     const { width, height } = this.cameras.main;
 
-    // Turn timer (top right)
+    // Timer (bottom-left corner)
     this.timerText = this.add
-      .text(width - 16, 16, "45", {
-        fontSize: "22px",
+      .text(20, height - 20, "45", {
+        fontSize: "24px",
         fontFamily: "monospace",
         color: "#ffcc00",
         stroke: "#000000",
         strokeThickness: 3,
       })
-      .setOrigin(1, 0);
+      .setOrigin(0, 1)
+      .setDepth(20);
 
-    // Wind indicator (top center)
-    this.windText = this.add
-      .text(width / 2, 16, "Wind: ---", {
-        fontSize: "12px",
-        fontFamily: "monospace",
-        color: "#ffffff",
-        stroke: "#000000",
-        strokeThickness: 2,
-      })
-      .setOrigin(0.5, 0);
-
-    // Turn indicator (top left)
+    // Turn indicator (top-left)
     this.turnText = this.add
       .text(16, 16, "", {
         fontSize: "12px",
@@ -57,14 +46,13 @@ export class HUDScene extends Phaser.Scene {
         stroke: "#000000",
         strokeThickness: 2,
       })
-      .setOrigin(0, 0);
+      .setOrigin(0, 0)
+      .setDepth(20);
 
-    // Power bar replaced by radial gauge on the worm (in GameScene)
-    this.powerBar = this.add.graphics();
-    this.powerBar.setVisible(false);
-    this.powerLabel = this.add.text(0, 0, "").setVisible(false);
+    // Wind display (bottom-right corner)
+    this.createWindDisplay();
 
-    // Weapon bar (bottom)
+    // Weapon bar (bottom center)
     this.createWeaponBar();
 
     // Listen for events from GameScene
@@ -85,6 +73,79 @@ export class HUDScene extends Phaser.Scene {
     this.scale.on("resize", (gameSize: Phaser.Structs.Size) => {
       this.cameras.main.setSize(gameSize.width, gameSize.height);
     });
+  }
+
+  // ─── Wind Display ──────────────────────────────────────
+
+  private createWindDisplay(): void {
+    const { width, height } = this.cameras.main;
+    this.windContainer = this.add.container(width - 20, height - 20);
+    this.windContainer.setDepth(20);
+
+    this.windLabel = this.add
+      .text(0, 0, "WIND", {
+        fontSize: "8px",
+        fontFamily: "monospace",
+        color: "#aaaaaa",
+        stroke: "#000000",
+        strokeThickness: 1,
+      })
+      .setOrigin(1, 1);
+    this.windContainer.add(this.windLabel);
+  }
+
+  private updateWind(wind: number): void {
+    // Clear old arrows
+    for (const arrow of this.windArrows) arrow.destroy();
+    this.windArrows = [];
+
+    const absWind = Math.abs(wind);
+    if (absWind < 3) {
+      this.windLabel.setText("WIND: calm");
+      return;
+    }
+
+    this.windLabel.setText("WIND");
+
+    // Number of arrows based on wind strength (1-5)
+    const arrowCount = Math.min(5, Math.max(1, Math.ceil(absWind / 20)));
+    const textureKey = wind > 0 ? "wind_right" : "wind_left";
+    const hasTexture = this.textures.exists(textureKey);
+
+    if (!hasTexture) {
+      // Fallback to text arrows
+      const dir = wind > 0 ? ">" : "<";
+      this.windLabel.setText("WIND " + dir.repeat(arrowCount));
+      return;
+    }
+
+    // Stack arrows horizontally
+    const arrowWidth = 20; // display width per arrow
+    const startX = -arrowCount * arrowWidth;
+
+    for (let i = 0; i < arrowCount; i++) {
+      const arrow = this.add.image(
+        startX + i * arrowWidth + arrowWidth / 2,
+        -14,
+        textureKey,
+      );
+      arrow.setDisplaySize(18, 6);
+      arrow.setOrigin(0.5, 0.5);
+      // Color arrows based on wind strength: green → yellow → red
+      const t = i / Math.max(1, arrowCount - 1);
+      const tint = this.getWindTint(t, absWind);
+      arrow.setTint(tint);
+      this.windContainer.add(arrow);
+      this.windArrows.push(arrow);
+    }
+  }
+
+  private getWindTint(t: number, absWind: number): number {
+    // Low wind: green, medium: yellow, high: red
+    const intensity = absWind / 100;
+    if (intensity < 0.33) return 0x44ff44;
+    if (intensity < 0.66) return 0xffff44;
+    return 0xff4444;
   }
 
   // ─── Event Handlers ────────────────────────────────────
@@ -111,11 +172,6 @@ export class HUDScene extends Phaser.Scene {
     const isMyTurn = msg.activePlayerId === this.playerId;
     this.updateTurnText(isMyTurn);
 
-    // Show power bar on my turn
-    this.showingPower = false;
-    this.powerBar.setVisible(false);
-    this.powerLabel.setVisible(false);
-
     // Start countdown
     if (this.timerInterval) clearInterval(this.timerInterval);
     this.timerInterval = setInterval(() => {
@@ -134,21 +190,10 @@ export class HUDScene extends Phaser.Scene {
     this.timerText.setText(String(remaining));
   }
 
-  private onAimUpdate(_angle: number): void {
-    // Power gauge is now drawn in world-space on the worm (WormEntity)
-  }
-
-  private onPowerUpdate(_power: number): void {
-    // Power gauge is now drawn in world-space on the worm (WormEntity)
-  }
-
-  private onChargeStart(): void {
-    // Power gauge is now drawn in world-space on the worm (WormEntity)
-  }
-
-  private onWeaponSelected(_weaponId: WeaponId): void {
-    // Could highlight the selected weapon in the bar
-  }
+  private onAimUpdate(_angle: number): void {}
+  private onPowerUpdate(_power: number): void {}
+  private onChargeStart(): void {}
+  private onWeaponSelected(_weaponId: WeaponId): void {}
 
   private onGameOver(msg: { winnerId: string | null; reason: string }): void {
     if (this.timerInterval) {
@@ -158,10 +203,8 @@ export class HUDScene extends Phaser.Scene {
 
     const { width, height } = this.cameras.main;
 
-    // Overlay
     this.add.rectangle(width / 2, height / 2, width, height, 0x000000, 0.7);
 
-    // Winner text
     const isWinner = msg.winnerId === this.playerId;
     this.add
       .text(
@@ -236,18 +279,6 @@ export class HUDScene extends Phaser.Scene {
     this.turnText.setColor(isMyTurn ? "#22c55e" : "#999999");
   }
 
-  private updateWind(wind: number): void {
-    const absWind = Math.abs(wind);
-    const dir = wind > 0 ? ">>>" : "<<<";
-    const arrows =
-      absWind > 60 ? dir : absWind > 30 ? dir.slice(0, 2) : dir.slice(0, 1);
-    const label =
-      wind === 0 ? "Wind: calm" : `Wind: ${arrows} ${absWind.toFixed(0)}`;
-    this.windText.setText(label);
-  }
-
-  // drawPowerBar removed — power gauge is now radial, drawn on the worm in GameScene
-
   private createWeaponBar(): void {
     const { width, height } = this.cameras.main;
     const btnSize = 48;
@@ -313,25 +344,39 @@ export class HUDScene extends Phaser.Scene {
     this.playerPanels.forEach((p) => p.destroy());
     this.playerPanels = [];
 
-    const panelX = 16;
+    const { width, height } = this.cameras.main;
+
+    // Team health bars centered at bottom, above weapon bar
+    const barWidth = 120;
+    const barHeight = 12;
+    const gap = 8;
+    const panelCount = state.players.length;
+    const totalWidth = panelCount * (barWidth + gap) - gap;
+    const startX = width / 2 - totalWidth / 2;
+    const panelY = height - 62; // above weapon bar
 
     state.players.forEach((player, idx) => {
-      const panelY = 50 + idx * 45;
-      const container = this.add.container(panelX, panelY);
+      const x = startX + idx * (barWidth + gap);
+      const container = this.add.container(x, panelY);
 
-      const bg = this.add
-        .rectangle(60, 0, 130, 36, 0x000000, 0.6)
-        .setOrigin(0, 0.5);
-
+      // Team name
       const name = this.add
-        .text(8, -10, player.displayName.slice(0, 10), {
+        .text(barWidth / 2, -4, player.displayName.slice(0, 12), {
           fontSize: "9px",
           fontFamily: "monospace",
           color: "#ffffff",
+          stroke: "#000000",
+          strokeThickness: 2,
         })
-        .setOrigin(0, 0);
+        .setOrigin(0.5, 1);
 
-      // Total HP bar
+      // HP bar background
+      const hpBg = this.add
+        .rectangle(0, 0, barWidth, barHeight, 0x111111, 0.8)
+        .setOrigin(0, 0)
+        .setStrokeStyle(1, 0x444444);
+
+      // HP bar fill
       let totalHp = 0;
       let maxHp = 0;
       player.worms.forEach((w) => {
@@ -339,24 +384,24 @@ export class HUDScene extends Phaser.Scene {
         maxHp += 100;
       });
       const pct = maxHp > 0 ? totalHp / maxHp : 0;
+      const teamColor = this.getTeamHex(player.teamColor);
 
-      const hpBg = this.add
-        .rectangle(68, 8, 110, 6, 0x333333)
-        .setOrigin(0, 0.5);
       const hpFill = this.add
-        .rectangle(68, 8, 110 * pct, 6, this.getTeamHex(player.teamColor))
-        .setOrigin(0, 0.5);
-
-      const alive = player.worms.filter((w) => w.isAlive).length;
-      const aliveText = this.add
-        .text(120, -10, `${alive} alive`, {
-          fontSize: "8px",
-          fontFamily: "monospace",
-          color: "#888888",
-        })
+        .rectangle(1, 1, (barWidth - 2) * pct, barHeight - 2, teamColor)
         .setOrigin(0, 0);
 
-      container.add([bg, name, hpBg, hpFill, aliveText]);
+      // HP text on bar
+      const hpLabel = this.add
+        .text(barWidth / 2, barHeight / 2, `${totalHp}`, {
+          fontSize: "8px",
+          fontFamily: "monospace",
+          color: "#ffffff",
+          stroke: "#000000",
+          strokeThickness: 1,
+        })
+        .setOrigin(0.5, 0.5);
+
+      container.add([hpBg, hpFill, name, hpLabel]);
       container.setDepth(20);
       this.playerPanels.push(container);
     });
