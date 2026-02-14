@@ -92,9 +92,11 @@ export class TerrainRenderer {
     this.theme = terrainData.theme;
     this.bitmap = decodeBitmap(terrainData.bitmap);
 
-    // Cache texture pixel data for forest theme
-    if (this.theme === "forest") {
-      this.initForestTextures();
+    // Always try to load forest textures if available (server may send any theme)
+    this.initForestTextures();
+    // Override theme to forest if we successfully loaded the textures
+    if (this.soilData) {
+      this.theme = "forest" as TerrainTheme;
     }
 
     // Background
@@ -102,8 +104,8 @@ export class TerrainRenderer {
     this.background.setDepth(0);
     this.drawBackground();
 
-    // Background scenery layer (forest back.png)
-    if (this.theme === "forest" && scene.textures.exists("terrain_back")) {
+    // Background scenery layer
+    if (this.soilData && scene.textures.exists("terrain_back")) {
       this.backImage = scene.add.tileSprite(
         TERRAIN_WIDTH / 2,
         TERRAIN_HEIGHT - 159 / 2 - 40,
@@ -301,7 +303,7 @@ export class TerrainRenderer {
   private renderFull(): void {
     this.ctx.clearRect(0, 0, TERRAIN_WIDTH, TERRAIN_HEIGHT);
 
-    if (this.theme === "forest" && this.soilData) {
+    if (this.soilData) {
       this.renderForestFull();
     } else {
       this.renderFlatFull();
@@ -425,7 +427,7 @@ export class TerrainRenderer {
 
     this.ctx.clearRect(minX, minY, maxX - minX, maxY - minY);
 
-    if (this.theme === "forest" && this.soilData) {
+    if (this.soilData) {
       this.renderForestRegion(minX, minY, maxX, maxY);
     } else {
       this.renderFlatRegion(minX, minY, maxX, maxY);
@@ -556,7 +558,7 @@ export class TerrainRenderer {
   }
 
   private drawBackground(): void {
-    if (this.theme === "forest" && this.gradientData) {
+    if (this.gradientData) {
       this.drawGradientBackground();
     } else {
       this.drawFlatBackground();
