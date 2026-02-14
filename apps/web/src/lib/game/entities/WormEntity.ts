@@ -54,6 +54,7 @@ export class WormEntity {
   private targetY: number;
   private currentAnim: string = "";
   private isWalking: boolean = false;
+  private walkingExplicit: boolean = false; // true when setWalking(true) was called
   private usesSprites: boolean = false;
   private isDead: boolean = false;
   private holdingWeapon: WeaponId | null = null;
@@ -280,7 +281,7 @@ export class WormEntity {
       this.die();
     }
 
-    if (newState.vx !== undefined) {
+    if (newState.vx !== undefined && !this.walkingExplicit) {
       this.isWalking =
         Math.abs(this.state.vx) > 1 && Math.abs(this.state.vy) < 5;
     }
@@ -322,9 +323,18 @@ export class WormEntity {
     }
   }
 
-  /** Update the aim angle — used for weapon hold sprite frame selection */
+  /** Update the aim angle — used for weapon hold sprite frame selection.
+   *  Also flips the worm to face the aim direction. */
   setAimAngle(angle: number): void {
     this.aimAngle = angle;
+    // Flip worm to face aim direction
+    // angle in (-PI/2, PI/2) → aiming right; outside → aiming left
+    const aimingRight = Math.abs(angle) < Math.PI / 2;
+    const newFacing = aimingRight ? "right" : "left";
+    if (this.state.facing !== newFacing) {
+      this.state.facing = newFacing;
+      this.applyFacing(newFacing);
+    }
   }
 
   /** Play jump or backflip animation, then allow normal state machine to take over */
@@ -336,10 +346,20 @@ export class WormEntity {
     this.jumpAnimPlaying = true;
     this.isShowingWeaponFrame = false;
     this.currentAnim = "";
+
+    // Backflip: temporarily flip sprite (worm jumps backward)
+    if (kind === "backflip") {
+      this.sprite.setFlipX(this.state.facing === "left");
+    }
+
     this.sprite.play(animKey);
     this.sprite.once("animationcomplete", () => {
       this.jumpAnimPlaying = false;
       this.currentAnim = "";
+      // Restore correct facing after backflip
+      if (this.sprite) {
+        this.applyFacing(this.state.facing);
+      }
     });
   }
 
@@ -364,6 +384,7 @@ export class WormEntity {
   /** Set walking state directly (called by GameScene on key events) */
   setWalking(walking: boolean): void {
     this.isWalking = walking;
+    this.walkingExplicit = walking;
     if (!walking && this.holdingWeapon) {
       // Play weapon draw animation when stopping, then return to aim pose
       const drawInfo = WEAPON_DRAW_SPRITES[this.holdingWeapon];

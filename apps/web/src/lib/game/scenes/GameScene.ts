@@ -857,6 +857,10 @@ export class GameScene extends Phaser.Scene {
     deaths: Array<{ wormId: string; cause: string }>;
     shotsRemaining: number;
   }): void {
+    // Play shotgun fire animation on the worm
+    const activeWorm = this.getActiveWorm();
+    activeWorm?.playFireAnim();
+
     const line = this.add.graphics();
     line.setDepth(10);
     line.lineStyle(2, 0xffff00, 1);
@@ -1030,20 +1034,28 @@ export class GameScene extends Phaser.Scene {
 
         if (this.projectileSprite) {
           this.projectileSprite.setPosition(x, y);
-          // Rotate missile smoothly using lookahead + angle lerp
+          // Missile: select spritesheet frame based on flight angle
+          // The missile spritesheet has 32 frames showing the missile
+          // at different rotation angles (frame 0 = up, rotating clockwise)
           if (useMissile) {
             const lookAhead = Math.min(index + 8, trajectory.length - 1);
             const ldx = trajectory[lookAhead].x - trajectory[index].x;
             const ldy = trajectory[lookAhead].y - trajectory[index].y;
             if (Math.abs(ldx) > 0.5 || Math.abs(ldy) > 0.5) {
               const targetAngle = Math.atan2(ldy, ldx);
-              // Lerp with wrapping to prevent jumps at ±PI boundary
               let diff = targetAngle - missileAngle;
               if (diff > Math.PI) diff -= 2 * Math.PI;
               if (diff < -Math.PI) diff += 2 * Math.PI;
               missileAngle += diff * 0.25;
             }
-            this.projectileSprite.setRotation(missileAngle);
+            // Map angle to frame: frame 0 = up (-PI/2), clockwise
+            // Normalize angle to [0, 2*PI), then map to frame
+            let normalizedAngle = missileAngle + Math.PI / 2; // offset so 0 = up
+            if (normalizedAngle < 0) normalizedAngle += 2 * Math.PI;
+            normalizedAngle = normalizedAngle % (2 * Math.PI);
+            const frame =
+              Math.round((normalizedAngle / (2 * Math.PI)) * 32) % 32;
+            this.projectileSprite.setFrame(frame);
           }
         }
         if (this.projectileFallback) {
