@@ -180,12 +180,6 @@ export class GameScene extends Phaser.Scene {
     this.load.image("wind_left", "/sprites/misc/windl.png");
     this.load.image("wind_right", "/sprites/misc/windr.png");
 
-    // Bitmap font (12px, 62 frames: A-Z=0-25, a-z=26-51, 0-9=52-61)
-    this.load.spritesheet("font12", "/sprites/misc/font12.png", {
-      frameWidth: 12,
-      frameHeight: 12,
-    });
-
     // Terrain textures (forest theme)
     this.load.image("terrain_soil", "/sprites/terrain/soil.png");
     this.load.image("terrain_grass", "/sprites/terrain/grass.png");

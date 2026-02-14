@@ -61,11 +61,6 @@ const THEME_COLORS: Record<TerrainTheme, ThemeColors> = {
   },
 };
 
-/** Check if a terrain texture was preloaded in Phaser */
-function hasTexture(scene: Phaser.Scene, key: string): boolean {
-  return scene.textures.exists(key) && key !== "__MISSING";
-}
-
 export class TerrainRenderer {
   private bitmap: Uint8Array;
   private canvas: OffscreenCanvas;
@@ -80,9 +75,15 @@ export class TerrainRenderer {
   private backImage: Phaser.GameObjects.TileSprite | null = null;
   private theme: TerrainTheme;
 
-  // Cached texture canvases for forest theme
-  private soilPattern: CanvasPattern | null = null;
-  private grassCanvas: OffscreenCanvas | null = null;
+  // Cached pixel data for forest textures
+  private soilData: ImageData | null = null;
+  private soilW: number = 0;
+  private soilH: number = 0;
+  private grassData: ImageData | null = null;
+  private grassW: number = 0;
+  private grassH: number = 0;
+  private gradientData: ImageData | null = null;
+  private gradientH: number = 0;
 
   constructor(
     private scene: Phaser.Scene,
@@ -91,7 +92,7 @@ export class TerrainRenderer {
     this.theme = terrainData.theme;
     this.bitmap = decodeBitmap(terrainData.bitmap);
 
-    // Cache texture patterns for forest theme
+    // Cache texture pixel data for forest theme
     if (this.theme === "forest") {
       this.initForestTextures();
     }
@@ -102,7 +103,7 @@ export class TerrainRenderer {
     this.drawBackground();
 
     // Background scenery layer (forest back.png)
-    if (this.theme === "forest" && hasTexture(scene, "terrain_back")) {
+    if (this.theme === "forest" && scene.textures.exists("terrain_back")) {
       this.backImage = scene.add.tileSprite(
         TERRAIN_WIDTH / 2,
         TERRAIN_HEIGHT - 159 / 2 - 40,
@@ -164,29 +165,41 @@ export class TerrainRenderer {
     });
   }
 
-  /** Extract canvas image data from a Phaser texture for use in OffscreenCanvas */
-  private extractTextureCanvas(key: string): OffscreenCanvas | null {
-    if (!hasTexture(this.scene, key)) return null;
+  /** Extract pixel data from a Phaser texture using a temporary DOM canvas */
+  private extractImageData(key: string): ImageData | null {
+    if (!this.scene.textures.exists(key)) return null;
     const source = this.scene.textures.get(key).getSourceImage();
     const w = source.width;
     const h = source.height;
-    const offscreen = new OffscreenCanvas(w, h);
-    const ctx = offscreen.getContext("2d")!;
-    ctx.drawImage(source as CanvasImageSource, 0, 0);
-    return offscreen;
+    // Use DOM canvas (not OffscreenCanvas) because getSourceImage returns HTMLImageElement
+    const tmpCanvas = document.createElement("canvas");
+    tmpCanvas.width = w;
+    tmpCanvas.height = h;
+    const tmpCtx = tmpCanvas.getContext("2d")!;
+    tmpCtx.drawImage(source as CanvasImageSource, 0, 0);
+    return tmpCtx.getImageData(0, 0, w, h);
   }
 
   private initForestTextures(): void {
-    // Soil pattern
-    const soilCanvas = this.extractTextureCanvas("terrain_soil");
-    if (soilCanvas) {
-      const tempCanvas = new OffscreenCanvas(1, 1);
-      const tempCtx = tempCanvas.getContext("2d")!;
-      this.soilPattern = tempCtx.createPattern(soilCanvas, "repeat");
+    const soilImgData = this.extractImageData("terrain_soil");
+    if (soilImgData) {
+      this.soilData = soilImgData;
+      this.soilW = soilImgData.width;
+      this.soilH = soilImgData.height;
     }
 
-    // Grass canvas
-    this.grassCanvas = this.extractTextureCanvas("terrain_grass");
+    const grassImgData = this.extractImageData("terrain_grass");
+    if (grassImgData) {
+      this.grassData = grassImgData;
+      this.grassW = grassImgData.width;
+      this.grassH = grassImgData.height;
+    }
+
+    const gradImgData = this.extractImageData("terrain_gradient");
+    if (gradImgData) {
+      this.gradientData = gradImgData;
+      this.gradientH = gradImgData.height;
+    }
   }
 
   private drawWave(): void {
@@ -274,14 +287,13 @@ export class TerrainRenderer {
   private renderFull(): void {
     this.ctx.clearRect(0, 0, TERRAIN_WIDTH, TERRAIN_HEIGHT);
 
-    if (this.theme === "forest" && this.soilPattern) {
+    if (this.theme === "forest" && this.soilData) {
       this.renderForestFull();
     } else {
       this.renderFlatFull();
     }
   }
 
-  /** Original flat-color rendering for non-forest themes */
   private renderFlatFull(): void {
     const colors = THEME_COLORS[this.theme];
 
@@ -315,71 +327,80 @@ export class TerrainRenderer {
     }
   }
 
-  /** Texture-based rendering for forest theme */
+  /** Texture-based rendering for forest theme using direct ImageData pixel manipulation */
   private renderForestFull(): void {
-    // Step 1: Fill all terrain pixels with soil texture pattern
-    this.ctx.save();
-    this.ctx.fillStyle = this.soilPattern!;
+    const imgData = this.ctx.createImageData(TERRAIN_WIDTH, TERRAIN_HEIGHT);
+    const pixels = imgData.data;
+    const soil = this.soilData!.data;
+    const sW = this.soilW;
+    const sH = this.soilH;
+
+    // Step 1: Fill terrain pixels with tiled soil texture
     for (let y = 0; y < TERRAIN_HEIGHT; y++) {
       for (let x = 0; x < TERRAIN_WIDTH; x++) {
-        if (getBitmapPixel(this.bitmap, x, y)) {
-          this.ctx.fillRect(x, y, 1, 1);
+        if (!getBitmapPixel(this.bitmap, x, y)) continue;
+        const si = ((y % sH) * sW + (x % sW)) * 4;
+        const di = (y * TERRAIN_WIDTH + x) * 4;
+        pixels[di] = soil[si];
+        pixels[di + 1] = soil[si + 1];
+        pixels[di + 2] = soil[si + 2];
+        pixels[di + 3] = 255;
+      }
+    }
+
+    // Step 2: Overlay grass at terrain surface edges
+    if (this.grassData) {
+      const grass = this.grassData.data;
+      const gW = this.grassW;
+      const gH = this.grassH;
+
+      for (let x = 0; x < TERRAIN_WIDTH; x++) {
+        // Find topmost solid pixel in this column
+        let topY = -1;
+        for (let y = 0; y < TERRAIN_HEIGHT; y++) {
+          if (getBitmapPixel(this.bitmap, x, y)) {
+            topY = y;
+            break;
+          }
+        }
+        if (topY < 0) continue;
+
+        // Draw grass texture centered on the surface
+        const gx = x % gW;
+        for (let gy = 0; gy < gH; gy++) {
+          const drawY = topY - Math.floor(gH / 3) + gy;
+          if (drawY < 0 || drawY >= TERRAIN_HEIGHT) continue;
+
+          const gi = (gy * gW + gx) * 4;
+          const ga = grass[gi + 3];
+          if (ga < 10) continue;
+
+          const di = (drawY * TERRAIN_WIDTH + x) * 4;
+          // Alpha blend grass onto existing pixels
+          const srcA = ga / 255;
+          const dstA = pixels[di + 3] / 255;
+          if (dstA === 0) {
+            // Draw grass even on empty pixels (grass tips above terrain)
+            pixels[di] = grass[gi];
+            pixels[di + 1] = grass[gi + 1];
+            pixels[di + 2] = grass[gi + 2];
+            pixels[di + 3] = ga;
+          } else {
+            // Blend over existing soil
+            pixels[di] = Math.round(grass[gi] * srcA + pixels[di] * (1 - srcA));
+            pixels[di + 1] = Math.round(
+              grass[gi + 1] * srcA + pixels[di + 1] * (1 - srcA),
+            );
+            pixels[di + 2] = Math.round(
+              grass[gi + 2] * srcA + pixels[di + 2] * (1 - srcA),
+            );
+            pixels[di + 3] = 255;
+          }
         }
       }
     }
-    this.ctx.restore();
 
-    // Step 2: Draw grass edge texture at terrain surface
-    this.renderGrassEdge(0, 0, TERRAIN_WIDTH, TERRAIN_HEIGHT);
-  }
-
-  /** Draw grass texture at terrain surface edges */
-  private renderGrassEdge(
-    minX: number,
-    minY: number,
-    maxX: number,
-    maxY: number,
-  ): void {
-    if (!this.grassCanvas) return;
-
-    const grassW = this.grassCanvas.width; // 144
-    const grassH = this.grassCanvas.height; // 16
-    const grassCtx = this.grassCanvas.getContext("2d")!;
-    const grassData = grassCtx.getImageData(0, 0, grassW, grassH);
-
-    // For each column, find the topmost terrain pixel and draw grass there
-    for (let x = minX; x < maxX; x++) {
-      // Find topmost solid pixel in this column
-      let topY = -1;
-      for (let y = Math.max(0, minY); y < Math.min(TERRAIN_HEIGHT, maxY); y++) {
-        if (getBitmapPixel(this.bitmap, x, y)) {
-          topY = y;
-          break;
-        }
-      }
-      if (topY < 0) continue;
-
-      // Sample grass texture column (tile horizontally)
-      const gx = x % grassW;
-      for (let gy = 0; gy < grassH; gy++) {
-        const drawY = topY - grassH / 2 + gy;
-        if (drawY < 0 || drawY >= TERRAIN_HEIGHT) continue;
-        // Only draw on terrain pixels (or slightly above for the grass tips)
-        const onTerrain = getBitmapPixel(this.bitmap, x, drawY);
-        const aboveTerrain = gy < grassH / 2;
-        if (!onTerrain && !aboveTerrain) continue;
-
-        const gi = (gy * grassW + gx) * 4;
-        const a = grassData.data[gi + 3];
-        if (a < 10) continue; // skip transparent
-
-        const r = grassData.data[gi];
-        const g = grassData.data[gi + 1];
-        const b = grassData.data[gi + 2];
-        this.ctx.fillStyle = `rgba(${r},${g},${b},${a / 255})`;
-        this.ctx.fillRect(x, drawY, 1, 1);
-      }
-    }
+    this.ctx.putImageData(imgData, 0, 0);
   }
 
   private renderRegion(rx: number, ry: number, rw: number, rh: number): void {
@@ -390,57 +411,126 @@ export class TerrainRenderer {
 
     this.ctx.clearRect(minX, minY, maxX - minX, maxY - minY);
 
-    if (this.theme === "forest" && this.soilPattern) {
-      // Soil fill
-      this.ctx.save();
-      this.ctx.fillStyle = this.soilPattern;
-      for (let y = minY; y < maxY; y++) {
-        for (let x = minX; x < maxX; x++) {
-          if (getBitmapPixel(this.bitmap, x, y)) {
-            this.ctx.fillRect(x, y, 1, 1);
-          }
-        }
-      }
-      this.ctx.restore();
-
-      // Grass edge
-      this.renderGrassEdge(minX, minY, maxX, maxY);
+    if (this.theme === "forest" && this.soilData) {
+      this.renderForestRegion(minX, minY, maxX, maxY);
     } else {
-      const colors = THEME_COLORS[this.theme];
+      this.renderFlatRegion(minX, minY, maxX, maxY);
+    }
+  }
 
-      this.ctx.fillStyle = colors.fill;
-      for (let y = minY; y < maxY; y++) {
-        for (let x = minX; x < maxX; x++) {
-          if (getBitmapPixel(this.bitmap, x, y)) {
-            this.ctx.fillRect(x, y, 1, 1);
-          }
+  private renderFlatRegion(
+    minX: number,
+    minY: number,
+    maxX: number,
+    maxY: number,
+  ): void {
+    const colors = THEME_COLORS[this.theme];
+
+    this.ctx.fillStyle = colors.fill;
+    for (let y = minY; y < maxY; y++) {
+      for (let x = minX; x < maxX; x++) {
+        if (getBitmapPixel(this.bitmap, x, y)) {
+          this.ctx.fillRect(x, y, 1, 1);
         }
       }
+    }
 
-      this.ctx.fillStyle = colors.edge;
-      const edgeThickness = 3;
-      for (let y = minY; y < maxY; y++) {
-        for (let x = minX; x < maxX; x++) {
-          if (!getBitmapPixel(this.bitmap, x, y)) continue;
-          let isEdge = false;
-          for (let dy = -edgeThickness; dy <= edgeThickness && !isEdge; dy++) {
-            for (
-              let dx = -edgeThickness;
-              dx <= edgeThickness && !isEdge;
-              dx++
-            ) {
-              if (dx === 0 && dy === 0) continue;
-              if (!getBitmapPixel(this.bitmap, x + dx, y + dy)) {
-                isEdge = true;
-              }
+    this.ctx.fillStyle = colors.edge;
+    const edgeThickness = 3;
+    for (let y = minY; y < maxY; y++) {
+      for (let x = minX; x < maxX; x++) {
+        if (!getBitmapPixel(this.bitmap, x, y)) continue;
+        let isEdge = false;
+        for (let dy = -edgeThickness; dy <= edgeThickness && !isEdge; dy++) {
+          for (let dx = -edgeThickness; dx <= edgeThickness && !isEdge; dx++) {
+            if (dx === 0 && dy === 0) continue;
+            if (!getBitmapPixel(this.bitmap, x + dx, y + dy)) {
+              isEdge = true;
             }
           }
-          if (isEdge) {
-            this.ctx.fillRect(x, y, 1, 1);
+        }
+        if (isEdge) {
+          this.ctx.fillRect(x, y, 1, 1);
+        }
+      }
+    }
+  }
+
+  private renderForestRegion(
+    minX: number,
+    minY: number,
+    maxX: number,
+    maxY: number,
+  ): void {
+    const regionW = maxX - minX;
+    const regionH = maxY - minY;
+    const imgData = this.ctx.createImageData(regionW, regionH);
+    const pixels = imgData.data;
+    const soil = this.soilData!.data;
+    const sW = this.soilW;
+    const sH = this.soilH;
+
+    // Soil fill
+    for (let y = minY; y < maxY; y++) {
+      for (let x = minX; x < maxX; x++) {
+        if (!getBitmapPixel(this.bitmap, x, y)) continue;
+        const si = ((y % sH) * sW + (x % sW)) * 4;
+        const di = ((y - minY) * regionW + (x - minX)) * 4;
+        pixels[di] = soil[si];
+        pixels[di + 1] = soil[si + 1];
+        pixels[di + 2] = soil[si + 2];
+        pixels[di + 3] = 255;
+      }
+    }
+
+    // Grass edge
+    if (this.grassData) {
+      const grass = this.grassData.data;
+      const gW = this.grassW;
+      const gH = this.grassH;
+
+      for (let x = minX; x < maxX; x++) {
+        let topY = -1;
+        for (let y = Math.max(0, minY - gH); y < maxY; y++) {
+          if (getBitmapPixel(this.bitmap, x, y)) {
+            topY = y;
+            break;
+          }
+        }
+        if (topY < 0) continue;
+
+        const gx = x % gW;
+        for (let gy = 0; gy < gH; gy++) {
+          const drawY = topY - Math.floor(gH / 3) + gy;
+          if (drawY < minY || drawY >= maxY) continue;
+
+          const gi = (gy * gW + gx) * 4;
+          const ga = grass[gi + 3];
+          if (ga < 10) continue;
+
+          const di = ((drawY - minY) * regionW + (x - minX)) * 4;
+          const srcA = ga / 255;
+          const dstA = pixels[di + 3] / 255;
+          if (dstA === 0) {
+            pixels[di] = grass[gi];
+            pixels[di + 1] = grass[gi + 1];
+            pixels[di + 2] = grass[gi + 2];
+            pixels[di + 3] = ga;
+          } else {
+            pixels[di] = Math.round(grass[gi] * srcA + pixels[di] * (1 - srcA));
+            pixels[di + 1] = Math.round(
+              grass[gi + 1] * srcA + pixels[di + 1] * (1 - srcA),
+            );
+            pixels[di + 2] = Math.round(
+              grass[gi + 2] * srcA + pixels[di + 2] * (1 - srcA),
+            );
+            pixels[di + 3] = 255;
           }
         }
       }
     }
+
+    this.ctx.putImageData(imgData, minX, minY);
   }
 
   private updateTexture(): void {
@@ -452,44 +542,30 @@ export class TerrainRenderer {
   }
 
   private drawBackground(): void {
-    if (this.theme === "forest") {
+    if (this.theme === "forest" && this.gradientData) {
       this.drawGradientBackground();
     } else {
       this.drawFlatBackground();
     }
   }
 
-  /** Use gradient.png to draw a smooth vertical gradient sky */
+  /** Use gradient.png pixel data to draw a smooth vertical gradient sky */
   private drawGradientBackground(): void {
-    const gradCanvas = this.extractTextureCanvas("terrain_gradient");
-    if (!gradCanvas) {
-      this.drawFlatBackground();
-      return;
-    }
+    const grad = this.gradientData!.data;
+    const gradH = this.gradientH;
+    const gradW = this.gradientData!.width;
 
-    const gradCtx = gradCanvas.getContext("2d")!;
-    const gradData = gradCtx.getImageData(
-      0,
-      0,
-      gradCanvas.width,
-      gradCanvas.height,
-    );
-    const gradH = gradCanvas.height; // 916
-
-    // Sample the gradient strip and draw horizontal bands
-    const totalH = TERRAIN_HEIGHT + 400; // cover camera bounds
+    const totalH = TERRAIN_HEIGHT + 400;
     for (let screenY = 0; screenY < totalH; screenY++) {
       const drawY = screenY - 200;
-      // Map screen Y to gradient Y
       const gy = Math.min(
         gradH - 1,
         Math.max(0, Math.floor((screenY / totalH) * gradH)),
       );
-      // Sample pixel at x=0 (it's a uniform strip)
-      const gi = gy * gradCanvas.width * 4;
-      const r = gradData.data[gi];
-      const g = gradData.data[gi + 1];
-      const b = gradData.data[gi + 2];
+      const gi = gy * gradW * 4;
+      const r = grad[gi];
+      const g = grad[gi + 1];
+      const b = grad[gi + 2];
       const color = (r << 16) | (g << 8) | b;
 
       this.background.fillStyle(color, 1);
@@ -497,7 +573,6 @@ export class TerrainRenderer {
     }
   }
 
-  /** Original flat two-tone sky */
   private drawFlatBackground(): void {
     const colors = THEME_COLORS[this.theme];
     const c1 = parseInt(colors.sky[0].replace("#", ""), 16);
