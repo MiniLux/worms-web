@@ -33,6 +33,10 @@ export default function PhaserGame({ gameId, playerId, partyHost }: Props) {
         keyboard: true,
         mouse: true,
       },
+      fps: {
+        target: 30,
+        forceSetTimeOut: true,
+      },
       render: {
         pixelArt: true,
         antialias: false,

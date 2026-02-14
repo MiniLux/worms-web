@@ -628,8 +628,7 @@ export class WormEntity {
     this.nameText.setPosition(newX, newY - 30);
     this.hpText.setPosition(newX, newY - 19);
     if (this.arrowSprite) {
-      const bounce = Math.sin(this.scene.time.now * 0.005) * 6;
-      this.arrowSprite.setPosition(newX, newY - 50 + bounce);
+      this.arrowSprite.setPosition(newX, newY - 50);
     }
     if (this.showPowerGauge) this.drawPowerGauge();
     this.updateAnimationState();
