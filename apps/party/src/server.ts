@@ -251,6 +251,10 @@ export default class GameServer implements Party.Server {
         }
 
         // Count down pending knockback (deferred from projectile impact)
+        // NOTE: damage visuals are handled client-side in applyFireEffects
+        // after the projectile animation completes. The server only applies
+        // the health change and knockback velocity here — no WORM_DAMAGE
+        // broadcast, which would arrive before the animation finishes.
         if (worm.pendingKnockback) {
           worm.pendingKnockback.delayMs -= dt * 1000;
           if (worm.pendingKnockback.delayMs <= 0) {
@@ -258,12 +262,6 @@ export default class GameServer implements Party.Server {
             worm.health = Math.max(0, worm.health - kb.damage);
             worm.vx += kb.vx;
             worm.vy += kb.vy;
-            this.broadcastAll({
-              type: "WORM_DAMAGE",
-              wormId: worm.id,
-              damage: kb.damage,
-              newHealth: worm.health,
-            });
             if (worm.health <= 0) {
               worm.isAlive = false;
               this.broadcastAll({
@@ -331,8 +329,8 @@ export default class GameServer implements Party.Server {
 
         // Update worm state
         const posChanged =
-          Math.abs(worm.x - result.x) > 0.5 ||
-          Math.abs(worm.y - result.y) > 0.5;
+          Math.abs(worm.x - result.x) > 0.1 ||
+          Math.abs(worm.y - result.y) > 0.1;
         const velChanged =
           Math.abs(worm.vx - result.vx) > 2 ||
           Math.abs(worm.vy - result.vy) > 2;
@@ -344,7 +342,7 @@ export default class GameServer implements Party.Server {
           worm.facing = walkDir > 0 ? "right" : "left";
         }
 
-        if (posChanged || velChanged) {
+        if (posChanged || velChanged || isWalking) {
           updates.push({
             wormId: worm.id,
             x: worm.x,

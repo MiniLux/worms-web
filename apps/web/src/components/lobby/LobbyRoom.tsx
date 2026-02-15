@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import PartySocket from "partysocket";
 import type {
@@ -8,6 +8,7 @@ import type {
   LobbyClientMessage,
   LobbyServerMessage,
 } from "@worms/shared";
+import { DEFAULT_WORMS_PER_TEAM } from "@worms/shared";
 
 interface Props {
   code: string;
@@ -29,6 +30,17 @@ export function LobbyRoom({
   const [lobby, setLobby] = useState<LobbyState | null>(null);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showTeamSettings, setShowTeamSettings] = useState(false);
+
+  // Load worm names from localStorage
+  const [wormNames, setWormNames] = useState<string[]>(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      const saved = localStorage.getItem("wormNames");
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return [];
+  });
 
   useEffect(() => {
     const socket = new PartySocket({
@@ -112,9 +124,43 @@ export function LobbyRoom({
     };
   }, [code, playerId, displayName, avatarUrl, partyHost, router]);
 
+  // Send worm names to server whenever they change or socket connects
+  const sentNamesRef = useRef(false);
+  useEffect(() => {
+    if (
+      socketRef.current &&
+      lobby &&
+      wormNames.length > 0 &&
+      !sentNamesRef.current
+    ) {
+      socketRef.current.send(
+        JSON.stringify({ type: "SET_WORM_NAMES", names: wormNames }),
+      );
+      sentNamesRef.current = true;
+    }
+  }, [lobby, wormNames]);
+
   const send = (msg: LobbyClientMessage) => {
     socketRef.current?.send(JSON.stringify(msg));
   };
+
+  const updateWormName = useCallback(
+    (index: number, name: string) => {
+      setWormNames((prev) => {
+        const wormsCount = lobby?.config.wormsPerTeam ?? DEFAULT_WORMS_PER_TEAM;
+        const next = [...prev];
+        while (next.length < wormsCount) next.push("");
+        next[index] = name;
+        localStorage.setItem("wormNames", JSON.stringify(next));
+        // Send to server
+        socketRef.current?.send(
+          JSON.stringify({ type: "SET_WORM_NAMES", names: next }),
+        );
+        return next;
+      });
+    },
+    [lobby?.config.wormsPerTeam],
+  );
 
   const myPlayer = lobby?.players.find((p) => p.id === playerId);
   const isHost = lobby?.hostId === playerId;
@@ -196,6 +242,43 @@ export function LobbyRoom({
             <p className="text-gray-500 text-sm text-center py-3">
               Waiting for players...
             </p>
+          )}
+        </div>
+
+        {/* Team Settings */}
+        <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 space-y-3">
+          <button
+            onClick={() => setShowTeamSettings(!showTeamSettings)}
+            className="flex items-center justify-between w-full text-sm font-semibold text-gray-400 uppercase tracking-wider"
+          >
+            <span>Team Settings</span>
+            <span className="text-xs text-gray-500">
+              {showTeamSettings ? "Hide" : "Show"}
+            </span>
+          </button>
+          {showTeamSettings && (
+            <div className="space-y-2 pt-2">
+              <p className="text-xs text-gray-500">
+                Name your worms (saved for future games)
+              </p>
+              {Array.from({
+                length: lobby?.config.wormsPerTeam ?? DEFAULT_WORMS_PER_TEAM,
+              }).map((_, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <span className="text-xs text-gray-500 w-6 text-right">
+                    {i + 1}.
+                  </span>
+                  <input
+                    type="text"
+                    value={wormNames[i] ?? ""}
+                    onChange={(e) => updateWormName(i, e.target.value)}
+                    placeholder={`Worm ${i + 1}`}
+                    maxLength={20}
+                    className="flex-1 bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-gray-500"
+                  />
+                </div>
+              ))}
+            </div>
           )}
         </div>
 

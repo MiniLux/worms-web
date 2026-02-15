@@ -93,6 +93,7 @@ export interface LobbyPlayer {
   isReady: boolean;
   isConnected: boolean;
   isHost: boolean;
+  wormNames?: string[];
 }
 
 export interface LobbyConfig {
@@ -120,6 +121,7 @@ export type LobbyClientMessage =
     }
   | { type: "SET_READY"; ready: boolean }
   | { type: "SET_TEAM_COLOR"; color: TeamColor }
+  | { type: "SET_WORM_NAMES"; names: string[] }
   | { type: "UPDATE_CONFIG"; config: Partial<LobbyConfig> }
   | { type: "START_GAME" }
   | { type: "CHAT"; text: string };
@@ -284,6 +286,7 @@ export interface GameInitPlayer {
   displayName: string;
   avatarUrl: string;
   teamColor: TeamColor;
+  wormNames?: string[];
 }
 
 export interface GameInitPayload {

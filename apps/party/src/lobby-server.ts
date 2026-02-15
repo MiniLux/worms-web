@@ -96,6 +96,9 @@ export default class LobbyServer implements Party.Server {
       case "SET_TEAM_COLOR":
         this.handleSetTeamColor(msg, sender);
         break;
+      case "SET_WORM_NAMES":
+        this.handleSetWormNames(msg, sender);
+        break;
       case "UPDATE_CONFIG":
         this.handleUpdateConfig(msg, sender);
         break;
@@ -193,6 +196,17 @@ export default class LobbyServer implements Party.Server {
     this.broadcast({ type: "PLAYER_UPDATED", player });
   }
 
+  private handleSetWormNames(
+    msg: Extract<LobbyClientMessage, { type: "SET_WORM_NAMES" }>,
+    conn: Party.Connection,
+  ): void {
+    const player = this.findPlayerByConnection(conn);
+    if (!player) return;
+
+    player.wormNames = msg.names.map((n) => n.trim().substring(0, 20));
+    this.broadcast({ type: "PLAYER_UPDATED", player });
+  }
+
   private handleUpdateConfig(
     msg: Extract<LobbyClientMessage, { type: "UPDATE_CONFIG" }>,
     conn: Party.Connection,
@@ -244,6 +258,7 @@ export default class LobbyServer implements Party.Server {
       displayName: p.displayName,
       avatarUrl: p.avatarUrl,
       teamColor: p.teamColor,
+      wormNames: p.wormNames,
     }));
 
     // Solo mode: add a CPU dummy opponent so there's something to shoot at

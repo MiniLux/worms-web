@@ -630,7 +630,7 @@ export class WormEntity {
     const nh = this.nameText.height + pad * 2;
     const nx = this.nameText.x - nw / 2;
     const ny = this.nameText.y - nh + pad;
-    this.nameBg.fillStyle(0x000000, 0.7);
+    this.nameBg.fillStyle(0x000000, 0.4);
     this.nameBg.fillRoundedRect(nx, ny, nw, nh, radius);
 
     // HP background
@@ -639,7 +639,7 @@ export class WormEntity {
     const hh = this.hpText.height + pad * 2;
     const hx = this.hpText.x - hw / 2;
     const hy = this.hpText.y - hh + pad;
-    this.hpBg.fillStyle(0x000000, 0.7);
+    this.hpBg.fillStyle(0x000000, 0.4);
     this.hpBg.fillRoundedRect(hx, hy, hw, hh, radius);
   }
 
@@ -740,7 +740,8 @@ export class WormEntity {
   update(): void {
     if (this.isDead) return;
 
-    const lerp = 0.2;
+    // Use faster lerp while walking for fluid movement, slower for knockback/settling
+    const lerp = this.isWalking ? 0.5 : 0.2;
     const curX = this.x;
     const curY = this.y;
     const newX = curX + (this.targetX - curX) * lerp;

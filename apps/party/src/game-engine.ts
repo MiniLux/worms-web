@@ -61,9 +61,11 @@ export function initializeGame(payload: GameInitPayload): GameState {
         x: 100 + spawnIdx * 200,
         y: 300,
       };
+      const customName = p.wormNames?.[w];
       worms.push({
         id: `${p.id}-worm-${w}`,
-        name: `Worm ${w + 1}`,
+        name:
+          customName && customName.trim() ? customName.trim() : `Worm ${w + 1}`,
         playerId: p.id,
         health: hp,
         x: spawn.x,
