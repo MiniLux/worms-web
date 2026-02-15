@@ -47,6 +47,8 @@ export interface PlayerState {
   worms: WormState[];
   ammo: Record<WeaponId, number>;
   isConnected: boolean;
+  /** Index of the last worm used by this player (for round-robin rotation) */
+  lastWormIndex: number;
 }
 
 export type GamePhase =

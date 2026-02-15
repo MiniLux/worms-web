@@ -91,6 +91,7 @@ export function initializeGame(payload: GameInitPayload): GameState {
       worms,
       ammo,
       isConnected: false,
+      lastWormIndex: 0,
     };
   });
 
@@ -161,28 +162,20 @@ export function advanceTurn(state: GameState): GameServerMessage[] {
 
   const nextPlayer = state.players[nextPlayerIdx];
 
-  // Find next alive worm for this player (round-robin)
+  // Find next alive worm for this player (round-robin using lastWormIndex)
   const aliveWorms = nextPlayer.worms.filter((w) => w.isAlive);
   if (aliveWorms.length === 0) {
     // Shouldn't happen given the check above, but just in case
     return advanceTurn(state);
   }
 
-  // Pick next worm in sequence
-  const currentWormIdx = nextPlayer.worms.findIndex(
-    (w) => w.id === state.activeWormId && w.playerId === nextPlayer.id,
-  );
-  let nextWorm: WormState;
-  if (currentWormIdx >= 0) {
-    // Find next alive worm after current
-    let idx = (currentWormIdx + 1) % nextPlayer.worms.length;
-    while (!nextPlayer.worms[idx].isAlive) {
-      idx = (idx + 1) % nextPlayer.worms.length;
-    }
-    nextWorm = nextPlayer.worms[idx];
-  } else {
-    nextWorm = aliveWorms[0];
+  // Pick next worm in sequence — advance from lastWormIndex
+  let idx = (nextPlayer.lastWormIndex + 1) % nextPlayer.worms.length;
+  while (!nextPlayer.worms[idx].isAlive) {
+    idx = (idx + 1) % nextPlayer.worms.length;
   }
+  const nextWorm = nextPlayer.worms[idx];
+  nextPlayer.lastWormIndex = idx;
 
   nextWorm.isActive = true;
   state.activePlayerId = nextPlayer.id;

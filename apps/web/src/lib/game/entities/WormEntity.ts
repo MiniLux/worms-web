@@ -27,8 +27,9 @@ function hasSpritesheet(scene: Phaser.Scene, key: string): boolean {
  */
 const WEAPON_AIM_SPRITES: Record<string, string> = {
   bazooka: "worm_baz",
-  grenade: "worm_throw",
+  grenade: "worm_thrgrn",
   shotgun: "worm_shotg",
+  teleport: "worm_teltlk",
 };
 
 /** Weapon "draw/get" animation played when worm stops walking and has a weapon */
@@ -36,6 +37,8 @@ const WEAPON_DRAW_SPRITES: Record<string, { texture: string; frames: number }> =
   {
     shotgun: { texture: "worm_shotg", frames: 32 },
     bazooka: { texture: "worm_bazlnk", frames: 7 },
+    grenade: { texture: "worm_thrgrn", frames: 32 },
+    teleport: { texture: "worm_tellnk", frames: 10 },
   };
 
 /** Weapon fire animation (played once on firing) */
@@ -43,14 +46,17 @@ const WEAPON_FIRE_SPRITES: Record<string, string> = {
   shotgun: "worm_shotf",
 };
 
-/** Weapon put-away (gun-in) uses the same sprites as draw but in reverse */
+/** Weapon put-away (gun-in) animation sprites.
+ *  reverse=true: play the draw sprite backwards (shotgun, bazooka).
+ *  reverse=false: dedicated put-away sprite played forward (grenade, teleport). */
 const WEAPON_PUTAWAY_SPRITES: Record<
   string,
-  { texture: string; frames: number }
+  { texture: string; frames: number; reverse: boolean }
 > = {
-  shotgun: { texture: "worm_shotg", frames: 32 },
-  bazooka: { texture: "worm_bazlnk", frames: 7 },
-  grenade: { texture: "worm_throw", frames: 32 },
+  shotgun: { texture: "worm_shotg", frames: 32, reverse: true },
+  bazooka: { texture: "worm_bazlnk", frames: 7, reverse: true },
+  grenade: { texture: "worm_thrbak", frames: 10, reverse: false },
+  teleport: { texture: "worm_telbak", frames: 10, reverse: false },
 };
 
 export class WormEntity {
@@ -447,7 +453,10 @@ export class WormEntity {
     this.isWalking = false;
     this.walkingExplicit = false;
     this.isShowingWeaponFrame = false;
+    this.holdingWeapon = null;
+    this.overrideAnim = null;
     this.currentAnim = "";
+    this.hideAimLine();
 
     // Backflip: keep the current facing direction — the worm looks forward
     // while somersaulting backward. No special flip needed.
@@ -528,7 +537,7 @@ export class WormEntity {
     });
   }
 
-  /** Play weapon put-away (gun-in) animation — draw animation in reverse */
+  /** Play weapon put-away (gun-in) animation */
   playPutAwayAnim(): void {
     if (!this.sprite) return;
     const weaponId = this.holdingWeapon;
@@ -539,10 +548,19 @@ export class WormEntity {
 
     const animKey = "putaway_" + info.texture;
     if (!this.scene.anims.exists(animKey)) {
-      // Create reversed frame sequence
-      const frames: Array<{ key: string; frame: number }> = [];
-      for (let i = info.frames - 1; i >= 0; i--) {
-        frames.push({ key: info.texture, frame: i });
+      let frames: Array<{ key: string; frame: number }>;
+      if (info.reverse) {
+        // Reversed draw sprite (shotgun, bazooka)
+        frames = [];
+        for (let i = info.frames - 1; i >= 0; i--) {
+          frames.push({ key: info.texture, frame: i });
+        }
+      } else {
+        // Dedicated forward-playing put-away sprite (grenade, teleport)
+        frames = this.scene.anims.generateFrameNumbers(info.texture, {
+          start: 0,
+          end: info.frames - 1,
+        }) as Array<{ key: string; frame: number }>;
       }
       this.scene.anims.create({
         key: animKey,
@@ -564,14 +582,28 @@ export class WormEntity {
   }
 
   showAimLine(angle: number, _power: number): void {
-    // Position crosshair sprite at fixed distance from worm
+    // Only show crosshair when the worm is stationary and holding a weapon
+    // (not while walking, jumping, or airborne)
     if (this.crosshairSprite) {
-      const distance = 100;
-      this.crosshairSprite.setPosition(
-        this.x + Math.cos(angle) * distance,
-        this.y + Math.sin(angle) * distance,
-      );
-      this.crosshairSprite.setVisible(true);
+      const shouldShow =
+        !this.isWalking &&
+        !this.jumpAnimPlaying &&
+        !this.isJumping &&
+        !this.drawAnimPlaying &&
+        this.holdingWeapon !== null &&
+        this.holdingWeapon !== "teleport" &&
+        this.holdingWeapon !== "fire_punch";
+
+      if (shouldShow) {
+        const distance = 100;
+        this.crosshairSprite.setPosition(
+          this.x + Math.cos(angle) * distance,
+          this.y + Math.sin(angle) * distance,
+        );
+        this.crosshairSprite.setVisible(true);
+      } else {
+        this.crosshairSprite.setVisible(false);
+      }
     }
     // Hide the old graphics line
     this.aimLine.setVisible(false);
@@ -781,10 +813,12 @@ export class WormEntity {
     // Clamp to [-PI/2, PI/2]
     vertAngle = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, vertAngle));
 
-    // Map from [-PI/2, PI/2] to [31, 0] (frame 31 = up, frame 0 = down)
-    // vertAngle -PI/2 = up = frame 31, vertAngle +PI/2 = down = frame 0
+    // Get the actual number of frames in this spritesheet
+    const maxFrame = this.scene.textures.get(textureKey).frameTotal - 2; // frameTotal includes __BASE
+
+    // Map from [-PI/2, PI/2] to [maxFrame, 0] (last frame = up, frame 0 = down)
     const t = (vertAngle + Math.PI / 2) / Math.PI; // 0 (up) .. 1 (down)
-    const frame = Math.round((1 - t) * 31);
+    const frame = Math.round((1 - t) * maxFrame);
 
     // Stop any playing animation and set the texture + frame directly
     if (!this.isShowingWeaponFrame || this.sprite.texture.key !== textureKey) {

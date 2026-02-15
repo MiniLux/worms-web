@@ -82,6 +82,14 @@ export class GameScene extends Phaser.Scene {
       worm_japbak: { file: "wjapbak.png" },
       worm_fist: { file: "wfist.png" },
       worm_firblast: { file: "wfirbl1.png" },
+      // Grenade throw with visible grenade
+      worm_thrgrn: { file: "wthrgrn.png" },
+      // Grenade/throw put-away
+      worm_thrbak: { file: "wthrbak.png" },
+      // Teleporter sprites
+      worm_tellnk: { file: "wtellnk.png" },
+      worm_telbak: { file: "wtelbak.png" },
+      worm_teltlk: { file: "wteltlk.png" },
     };
 
     for (const [key, info] of Object.entries(wormSprites)) {
@@ -1025,6 +1033,9 @@ export class GameScene extends Phaser.Scene {
         duration: 300,
         onComplete: () => newFlash.destroy(),
       });
+
+      // Play teleporter put-away animation after teleporting
+      entity.playPutAwayAnim();
 
       this.cameras.main.pan(msg.x, msg.y, 300);
     }
