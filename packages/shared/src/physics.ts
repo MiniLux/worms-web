@@ -238,10 +238,21 @@ export function simulateBallistic(
       getBitmapPixel(bitmap, Math.round(x), Math.round(y))
     ) {
       if (bounceElasticity > 0) {
-        // Simple bounce: reverse velocity component and reduce
-        // Check if collision is more horizontal or vertical
         const prevX = trajectory[trajectory.length - 2]?.x ?? x;
         const prevY = trajectory[trajectory.length - 2]?.y ?? y;
+
+        // Determine if it's a wall or floor hit by checking adjacent pixels
+        const rx = Math.round(x);
+        const ry = Math.round(y);
+        const hitBelow =
+          ry + 1 < TERRAIN_HEIGHT && getBitmapPixel(bitmap, rx, ry + 1);
+        const hitAbove = ry - 1 >= 0 && getBitmapPixel(bitmap, rx, ry - 1);
+        const hitLeft = rx - 1 >= 0 && getBitmapPixel(bitmap, rx - 1, ry);
+        const hitRight =
+          rx + 1 < TERRAIN_WIDTH && getBitmapPixel(bitmap, rx + 1, ry);
+
+        const verticalWall = (hitLeft || hitRight) && !hitAbove && !hitBelow;
+        const horizontalFloor = (hitAbove || hitBelow) && !hitLeft && !hitRight;
 
         // Back up to previous position
         x = prevX;
@@ -252,9 +263,19 @@ export function simulateBallistic(
           t,
         };
 
-        // Reverse and dampen
-        vy = -vy * bounceElasticity;
-        vx = vx * bounceElasticity;
+        if (verticalWall) {
+          // Wall hit: reverse horizontal velocity
+          vx = -vx * bounceElasticity;
+          vy = vy * bounceElasticity;
+        } else if (horizontalFloor) {
+          // Floor/ceiling hit: reverse vertical velocity
+          vx = vx * bounceElasticity;
+          vy = -vy * bounceElasticity;
+        } else {
+          // Corner or ambiguous: reverse both
+          vx = -vx * bounceElasticity;
+          vy = -vy * bounceElasticity;
+        }
 
         // If moving too slowly, stop
         if (Math.abs(vx) < 5 && Math.abs(vy) < 5) {

@@ -597,7 +597,26 @@ export function processTeleport(
 
   // Clamp to terrain bounds
   const x = Math.max(WORM_WIDTH, Math.min(1920 - WORM_WIDTH, targetX));
-  const y = Math.max(WORM_HEIGHT, Math.min(WATER_LEVEL - WORM_HEIGHT, targetY));
+  let y = Math.max(WORM_HEIGHT, Math.min(WATER_LEVEL - WORM_HEIGHT, targetY));
+
+  // Prevent teleporting into solid ground — find the surface above the click point
+  const bitmap = decodeBitmap(state.terrain.bitmap);
+  const feetY = Math.round(y + WORM_HEIGHT / 2);
+  if (
+    feetY >= 0 &&
+    feetY < WATER_LEVEL &&
+    getBitmapPixel(bitmap, Math.round(x), feetY)
+  ) {
+    // Click is inside terrain — scan upward to find open air
+    let surfaceY = feetY;
+    for (let sy = feetY; sy >= 0; sy--) {
+      if (!getBitmapPixel(bitmap, Math.round(x), sy)) {
+        surfaceY = sy;
+        break;
+      }
+    }
+    y = surfaceY - WORM_HEIGHT / 2;
+  }
 
   worm.x = x;
   worm.y = y;

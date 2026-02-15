@@ -30,6 +30,7 @@ export class GameScene extends Phaser.Scene {
   private isCharging: boolean = false;
   private chargeStartTime: number = 0;
   private readonly CHARGE_DURATION_MS: number = 2000;
+  private aimLocked: boolean = false;
 
   // Movement tracking
   private isMovingLeft: boolean = false;
@@ -52,6 +53,11 @@ export class GameScene extends Phaser.Scene {
   // Wind particles
   private windParticles: Phaser.GameObjects.Sprite[] = [];
   private currentWind: number = 0;
+
+  // Edge-scroll camera
+  private readonly EDGE_SCROLL_ZONE = 40; // pixels from screen edge
+  private readonly EDGE_SCROLL_SPEED = 500; // px/s
+  private cameraFollowingWorm: boolean = false;
 
   constructor() {
     super({ key: "GameScene" });
@@ -86,6 +92,8 @@ export class GameScene extends Phaser.Scene {
       worm_japbak: { file: "wjapbak.png" },
       worm_fist: { file: "wfist.png" },
       worm_firblast: { file: "wfirbl1.png" },
+      // Shotgun draw (pick-up) animation
+      worm_shotp: { file: "wshotp.png" },
       // Grenade throw with visible grenade
       worm_thrgrn: { file: "wthrgrn.png" },
       // Grenade draw (get out) and put-away
@@ -368,6 +376,9 @@ export class GameScene extends Phaser.Scene {
       // Skip aim updates for fire punch (direction-only weapon)
       if (this.selectedWeapon === "fire_punch") return;
 
+      // Lock aim direction while charging power (spacebar held)
+      if (this.aimLocked) return;
+
       const activeWorm = this.getActiveWorm();
       if (!activeWorm) return;
 
@@ -413,6 +424,7 @@ export class GameScene extends Phaser.Scene {
 
       if (this.isCharging) return;
       this.isCharging = true;
+      this.aimLocked = true;
       this.chargeStartTime = Date.now();
       this.currentPower = 0;
       this.events.emit("charge_start");
@@ -513,11 +525,59 @@ export class GameScene extends Phaser.Scene {
         const activeWorm = this.getActiveWorm();
         activeWorm?.showAimLine(this.currentAimAngle, this.currentPower);
         activeWorm?.updatePowerGauge(this.currentPower);
+
+        // Auto-fire at max power
+        if (this.currentPower >= 1) {
+          this.isCharging = false;
+          this.fire();
+        }
       }
     }
 
     // Update worm lerping
     this.wormEntities.forEach((entity) => entity.update());
+
+    // Camera: follow active worm when it moves, otherwise allow edge-scroll
+    const activeWorm = this.getActiveWorm();
+    if (activeWorm && this.isMyTurn) {
+      const isWormMoving = this.isMovingLeft || this.isMovingRight;
+      if (isWormMoving && !this.cameraFollowingWorm) {
+        this.cameraFollowingWorm = true;
+      }
+      if (this.cameraFollowingWorm) {
+        this.cameras.main.centerOn(activeWorm.x, activeWorm.y);
+        if (!isWormMoving) {
+          this.cameraFollowingWorm = false;
+        }
+      }
+    }
+
+    // Edge-of-screen camera panning
+    if (!this.cameraFollowingWorm) {
+      const pointer = this.input.activePointer;
+      const cam = this.cameras.main;
+      const dt = this.game.loop.delta / 1000;
+      const zone = this.EDGE_SCROLL_ZONE;
+      const speed = this.EDGE_SCROLL_SPEED;
+      let scrollX = 0;
+      let scrollY = 0;
+
+      if (pointer.x < zone) {
+        scrollX = -speed * dt;
+      } else if (pointer.x > cam.width - zone) {
+        scrollX = speed * dt;
+      }
+      if (pointer.y < zone) {
+        scrollY = -speed * dt;
+      } else if (pointer.y > cam.height - zone) {
+        scrollY = speed * dt;
+      }
+
+      if (scrollX !== 0 || scrollY !== 0) {
+        cam.scrollX += scrollX;
+        cam.scrollY += scrollY;
+      }
+    }
 
     // Update wind particles
     this.updateWindParticles();
@@ -544,10 +604,8 @@ export class GameScene extends Phaser.Scene {
     const camBounds = this.cameras.main.worldView;
 
     for (let i = 0; i < count; i++) {
-      const startX =
-        this.currentWind > 0
-          ? camBounds.left - 60 - Math.random() * 400
-          : camBounds.right + 60 + Math.random() * 400;
+      // Spread debris across the full screen width
+      const startX = camBounds.left + Math.random() * camBounds.width;
       const startY = camBounds.top + Math.random() * camBounds.height;
 
       const particle = this.add.sprite(startX, startY, textureKey, 0);
@@ -707,6 +765,7 @@ export class GameScene extends Phaser.Scene {
       case "RETREAT_START":
         this.isAiming = false;
         this.isCharging = false;
+        this.aimLocked = false;
         this.getActiveWorm()?.hideAimLine();
         this.getActiveWorm()?.hidePowerGauge();
         this.hideTeleportCursor();
@@ -715,6 +774,7 @@ export class GameScene extends Phaser.Scene {
         this.isMyTurn = false;
         this.isAiming = false;
         this.isCharging = false;
+        this.aimLocked = false;
         this.isMovingLeft = false;
         this.isMovingRight = false;
         this.getActiveWorm()?.hidePowerGauge();
@@ -1240,6 +1300,7 @@ export class GameScene extends Phaser.Scene {
 
   private fire(): void {
     this.isAiming = false;
+    this.aimLocked = false;
     const activeWorm = this.getActiveWorm();
     activeWorm?.hideAimLine();
     activeWorm?.hidePowerGauge();

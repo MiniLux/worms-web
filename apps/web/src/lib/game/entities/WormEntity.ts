@@ -1,5 +1,6 @@
 import * as Phaser from "phaser";
 import type { WormState, TeamColor, WeaponId } from "@worms/shared";
+import { createExplosion } from "../effects/ExplosionEffect";
 
 const COLOR_MAP: Record<TeamColor, number> = {
   red: 0xef4444,
@@ -35,7 +36,7 @@ const WEAPON_AIM_SPRITES: Record<string, string> = {
 /** Weapon "draw/get" animation played when worm stops walking and has a weapon */
 const WEAPON_DRAW_SPRITES: Record<string, { texture: string; frames: number }> =
   {
-    shotgun: { texture: "worm_shotg", frames: 32 },
+    shotgun: { texture: "worm_shotp", frames: 32 },
     bazooka: { texture: "worm_bazlnk", frames: 7 },
     grenade: { texture: "worm_grnlnk", frames: 10 },
     teleport: { texture: "worm_tellnk", frames: 10 },
@@ -53,7 +54,7 @@ const WEAPON_PUTAWAY_SPRITES: Record<
   string,
   { texture: string; frames: number; reverse: boolean }
 > = {
-  shotgun: { texture: "worm_shotg", frames: 32, reverse: true },
+  shotgun: { texture: "worm_shotp", frames: 32, reverse: true },
   bazooka: { texture: "worm_bazlnk", frames: 7, reverse: true },
   grenade: { texture: "worm_grnbak", frames: 10, reverse: false },
   teleport: { texture: "worm_telbak", frames: 10, reverse: false },
@@ -194,7 +195,7 @@ export class WormEntity {
         key: "worm_walk",
         texture: "worm_walk",
         end: 14,
-        rate: 18,
+        rate: 30,
         repeat: -1,
         yoyo: true,
       },
@@ -588,6 +589,12 @@ export class WormEntity {
           this.x + Math.cos(angle) * distance,
           this.y + Math.sin(angle) * distance,
         );
+        // Pick frame based on aim angle (32 frames, frame 0 = up, clockwise)
+        let normalizedAngle = angle + Math.PI / 2; // offset so 0 = up
+        if (normalizedAngle < 0) normalizedAngle += 2 * Math.PI;
+        normalizedAngle = normalizedAngle % (2 * Math.PI);
+        const frame = Math.round((normalizedAngle / (2 * Math.PI)) * 32) % 32;
+        this.crosshairSprite.setFrame(frame);
         this.crosshairSprite.setVisible(true);
       } else {
         this.crosshairSprite.setVisible(false);
@@ -874,12 +881,15 @@ export class WormEntity {
     ) {
       this.sprite.play("worm_die_anim");
       this.sprite.once("animationcomplete", () => {
+        // Worms 2-style death explosion before grave appears
+        createExplosion(this.scene, this.x, this.y, 20);
         if (this.sprite) {
           this.sprite.setVisible(false);
         }
         this.showGrave();
       });
     } else {
+      createExplosion(this.scene, this.x, this.y, 20);
       if (this.fallbackBody) {
         this.fallbackBody.setFillStyle(0x666666);
         this.fallbackBody.setAlpha(0.5);
