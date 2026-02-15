@@ -967,6 +967,9 @@ export class GameScene extends Phaser.Scene {
 
     if (msg.shotsRemaining > 0) {
       this.isAiming = true;
+    } else {
+      // Last shot — play weapon put-away animation
+      activeWorm?.playPutAwayAnim();
     }
   }
 
@@ -1174,8 +1177,9 @@ export class GameScene extends Phaser.Scene {
 
   private fire(): void {
     this.isAiming = false;
-    this.getActiveWorm()?.hideAimLine();
-    this.getActiveWorm()?.hidePowerGauge();
+    const activeWorm = this.getActiveWorm();
+    activeWorm?.hideAimLine();
+    activeWorm?.hidePowerGauge();
 
     if (this.selectedWeapon === "shotgun") {
       this.sendMessage({
@@ -1191,6 +1195,8 @@ export class GameScene extends Phaser.Scene {
         angle: this.currentAimAngle,
         power: this.currentPower,
       });
+      // Play weapon put-away animation for projectile weapons (bazooka, grenade)
+      activeWorm?.playPutAwayAnim();
     }
   }
 

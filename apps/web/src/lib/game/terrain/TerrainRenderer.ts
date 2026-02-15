@@ -217,10 +217,10 @@ export class TerrainRenderer {
   }
 
   /**
-   * Draw 5 layered translucent waves in the Worms 2 style.
-   * Each wave is a filled band that oscillates with sine waves.
-   * Layers go from lightest (top) to darkest (bottom), with
-   * blue/purple tones matching the classic Worms 2 palette.
+   * Draw 5 layered waves in the Worms 2 style.
+   * Each wave is a distinct opaque band with its own color, separated by
+   * visible highlight lines on the crests. Colors go from lighter blue
+   * at the top to dark navy at the bottom.
    */
   private drawWave(): void {
     this.waterWave.clear();
@@ -228,108 +228,108 @@ export class TerrainRenderer {
     const baseY = WATER_LEVEL;
     const startX = -100;
     const endX = TERRAIN_WIDTH + 100;
-    const step = 3;
-    const bottomY = baseY + 60; // waves extend ~60px below water line
+    const step = 4;
+    const bottomY = baseY + 80;
 
-    // 5 wave layers: color, alpha, vertical offset, amplitude, frequency, speed
+    // 5 wave layers — each fills from its sine crest down to bottomY,
+    // painted back-to-front so upper waves cover lower ones.
+    // Prominent amplitudes and distinct colors for clear separation.
     const waves = [
       {
-        color: 0x6070b0,
-        alpha: 0.45,
-        yOff: -4,
-        amp: 5,
-        freq: 0.015,
-        speed: 1.2,
-        phase: 0,
+        color: 0x1e2850,
+        highlight: 0x3a4a80,
+        yOff: 36,
+        amp: 3,
+        freq: 0.022,
+        speed: 0.8,
+        phase: 5.0,
       },
       {
-        color: 0x5060a0,
-        alpha: 0.45,
-        yOff: 4,
+        color: 0x263060,
+        highlight: 0x4060a0,
+        yOff: 26,
         amp: 4,
-        freq: 0.02,
-        speed: 0.9,
-        phase: 1.5,
-      },
-      {
-        color: 0x405090,
-        alpha: 0.5,
-        yOff: 12,
-        amp: 3.5,
-        freq: 0.025,
-        speed: 1.4,
-        phase: 3.0,
+        freq: 0.018,
+        speed: 1.1,
+        phase: 3.5,
       },
       {
         color: 0x304080,
-        alpha: 0.5,
-        yOff: 20,
-        amp: 3,
-        freq: 0.018,
-        speed: 0.7,
-        phase: 4.5,
+        highlight: 0x5878b8,
+        yOff: 16,
+        amp: 5,
+        freq: 0.024,
+        speed: 1.4,
+        phase: 2.0,
       },
       {
-        color: 0x253070,
-        alpha: 0.55,
-        yOff: 28,
-        amp: 2.5,
-        freq: 0.022,
-        speed: 1.0,
-        phase: 6.0,
+        color: 0x3a5090,
+        highlight: 0x7090d0,
+        yOff: 7,
+        amp: 5,
+        freq: 0.02,
+        speed: 0.9,
+        phase: 0.8,
+      },
+      {
+        color: 0x4868a8,
+        highlight: 0x90b8f0,
+        yOff: -2,
+        amp: 6,
+        freq: 0.016,
+        speed: 1.2,
+        phase: 0,
       },
     ];
 
+    // Helper to compute wave Y at a given x position
+    const waveY = (wave: (typeof waves)[0], x: number): number =>
+      baseY +
+      wave.yOff +
+      Math.sin(x * wave.freq + this.waveTime * wave.speed + wave.phase) *
+        wave.amp +
+      Math.sin(
+        x * wave.freq * 2.3 +
+          this.waveTime * wave.speed * 0.5 +
+          wave.phase * 0.7,
+      ) *
+        wave.amp *
+        0.3;
+
+    // Draw back-to-front: deepest wave first, top wave last
     for (const wave of waves) {
-      this.waterWave.fillStyle(wave.color, wave.alpha);
+      // Filled wave band
+      this.waterWave.fillStyle(wave.color, 0.92);
       this.waterWave.beginPath();
-
-      // Top edge: sine wave
-      const firstY =
-        baseY +
-        wave.yOff +
-        Math.sin(startX * wave.freq + this.waveTime * wave.speed + wave.phase) *
-          wave.amp +
-        Math.sin(startX * wave.freq * 1.7 + this.waveTime * wave.speed * 0.6) *
-          wave.amp *
-          0.5;
-      this.waterWave.moveTo(startX, firstY);
-
+      this.waterWave.moveTo(startX, waveY(wave, startX));
       for (let x = startX + step; x <= endX; x += step) {
-        const y =
-          baseY +
-          wave.yOff +
-          Math.sin(x * wave.freq + this.waveTime * wave.speed + wave.phase) *
-            wave.amp +
-          Math.sin(x * wave.freq * 1.7 + this.waveTime * wave.speed * 0.6) *
-            wave.amp *
-            0.5;
-        this.waterWave.lineTo(x, y);
+        this.waterWave.lineTo(x, waveY(wave, x));
       }
-
-      // Close the shape along the bottom
       this.waterWave.lineTo(endX, bottomY);
       this.waterWave.lineTo(startX, bottomY);
       this.waterWave.closePath();
       this.waterWave.fillPath();
+
+      // Highlight line on the crest of each wave
+      this.waterWave.lineStyle(2, wave.highlight, 0.7);
+      this.waterWave.beginPath();
+      for (let x = startX; x <= endX; x += step) {
+        const y = waveY(wave, x);
+        if (x === startX) {
+          this.waterWave.moveTo(x, y);
+        } else {
+          this.waterWave.lineTo(x, y);
+        }
+      }
+      this.waterWave.strokePath();
     }
 
-    // White highlight on the very top wave crest
-    this.waterWave.lineStyle(1.5, 0xffffff, 0.3);
+    // Bright white specular highlight on the very top wave
+    const topWave = waves[waves.length - 1];
+    this.waterWave.lineStyle(2, 0xffffff, 0.5);
     this.waterWave.beginPath();
-    const topWave = waves[0];
     for (let x = startX; x <= endX; x += step) {
-      const y =
-        baseY +
-        topWave.yOff -
-        1 +
-        Math.sin(
-          x * topWave.freq + this.waveTime * topWave.speed + topWave.phase,
-        ) *
-          topWave.amp +
-        Math.sin(x * topWave.freq * 1.7 + this.waveTime * topWave.speed * 0.6) *
-          topWave.amp *
-          0.5;
+      const y = waveY(topWave, x) - 1;
       if (x === startX) {
         this.waterWave.moveTo(x, y);
       } else {
@@ -457,34 +457,45 @@ export class TerrainRenderer {
       }
 
       // Third pass: draw grass using smoothed Y positions
+      // Only use the green half of the grass texture (left portion contains the
+      // actual grass blades; right portion is brown soil highlights that create
+      // visible rectangular artifacts when tiled over the soil texture)
+      const grassTileW = Math.floor(gW / 2);
+
       for (let x = 0; x < TERRAIN_WIDTH; x++) {
         const topY = smoothY[x];
         if (topY < 0) continue;
 
-        const gx = x % gW;
+        const gx = x % grassTileW;
         for (let gy = 0; gy < gH; gy++) {
           const drawY = topY - Math.floor(gH / 3) + gy;
           if (drawY < 0 || drawY >= TERRAIN_HEIGHT) continue;
 
           const gi = (gy * gW + gx) * 4;
+          const gr = grass[gi];
+          const gg = grass[gi + 1];
+          const gb = grass[gi + 2];
           const ga = grass[gi + 3];
           if (ga < 10) continue;
+
+          // Skip pixels that are mostly brown (soil-colored) to avoid artifacts
+          if (gr > gg && gg < 80) continue;
 
           const di = (drawY * TERRAIN_WIDTH + x) * 4;
           const srcA = ga / 255;
           const dstA = pixels[di + 3] / 255;
           if (dstA === 0) {
-            pixels[di] = grass[gi];
-            pixels[di + 1] = grass[gi + 1];
-            pixels[di + 2] = grass[gi + 2];
+            pixels[di] = gr;
+            pixels[di + 1] = gg;
+            pixels[di + 2] = gb;
             pixels[di + 3] = ga;
           } else {
-            pixels[di] = Math.round(grass[gi] * srcA + pixels[di] * (1 - srcA));
+            pixels[di] = Math.round(gr * srcA + pixels[di] * (1 - srcA));
             pixels[di + 1] = Math.round(
-              grass[gi + 1] * srcA + pixels[di + 1] * (1 - srcA),
+              gg * srcA + pixels[di + 1] * (1 - srcA),
             );
             pixels[di + 2] = Math.round(
-              grass[gi + 2] * srcA + pixels[di + 2] * (1 - srcA),
+              gb * srcA + pixels[di + 2] * (1 - srcA),
             );
             pixels[di + 3] = 255;
           }
@@ -581,40 +592,75 @@ export class TerrainRenderer {
       const gW = this.grassW;
       const gH = this.grassH;
 
+      // Only use the green half of the grass texture (same as renderForestFull)
+      const grassTileW = Math.floor(gW / 2);
+
+      // Find and smooth surface Y for each column in the region
+      const regionSurfaceY = new Int32Array(maxX - minX);
       for (let x = minX; x < maxX; x++) {
-        let topY = -1;
+        regionSurfaceY[x - minX] = -1;
         for (let y = Math.max(0, minY - gH); y < maxY; y++) {
           if (getBitmapPixel(this.bitmap, x, y)) {
-            topY = y;
+            regionSurfaceY[x - minX] = y;
             break;
           }
         }
+      }
+
+      // Smooth surface Y (same 3px radius as renderForestFull)
+      const smoothRegionY = new Int32Array(maxX - minX);
+      const smoothRadius = 3;
+      for (let i = 0; i < maxX - minX; i++) {
+        if (regionSurfaceY[i] < 0) {
+          smoothRegionY[i] = -1;
+          continue;
+        }
+        let sum = 0;
+        let count = 0;
+        for (let di = -smoothRadius; di <= smoothRadius; di++) {
+          const ni = i + di;
+          if (ni >= 0 && ni < maxX - minX && regionSurfaceY[ni] >= 0) {
+            sum += regionSurfaceY[ni];
+            count++;
+          }
+        }
+        smoothRegionY[i] = Math.round(sum / count);
+      }
+
+      for (let x = minX; x < maxX; x++) {
+        const topY = smoothRegionY[x - minX];
         if (topY < 0) continue;
 
-        const gx = x % gW;
+        const gx = x % grassTileW;
         for (let gy = 0; gy < gH; gy++) {
           const drawY = topY - Math.floor(gH / 3) + gy;
           if (drawY < minY || drawY >= maxY) continue;
 
           const gi = (gy * gW + gx) * 4;
+          const gr = grass[gi];
+          const gg = grass[gi + 1];
+          const gb = grass[gi + 2];
           const ga = grass[gi + 3];
           if (ga < 10) continue;
+
+          // Skip brown pixels to avoid artifacts (same as renderForestFull)
+          if (gr > gg && gg < 80) continue;
 
           const di = ((drawY - minY) * regionW + (x - minX)) * 4;
           const srcA = ga / 255;
           const dstA = pixels[di + 3] / 255;
           if (dstA === 0) {
-            pixels[di] = grass[gi];
-            pixels[di + 1] = grass[gi + 1];
-            pixels[di + 2] = grass[gi + 2];
+            pixels[di] = gr;
+            pixels[di + 1] = gg;
+            pixels[di + 2] = gb;
             pixels[di + 3] = ga;
           } else {
-            pixels[di] = Math.round(grass[gi] * srcA + pixels[di] * (1 - srcA));
+            pixels[di] = Math.round(gr * srcA + pixels[di] * (1 - srcA));
             pixels[di + 1] = Math.round(
-              grass[gi + 1] * srcA + pixels[di + 1] * (1 - srcA),
+              gg * srcA + pixels[di + 1] * (1 - srcA),
             );
             pixels[di + 2] = Math.round(
-              grass[gi + 2] * srcA + pixels[di + 2] * (1 - srcA),
+              gb * srcA + pixels[di + 2] * (1 - srcA),
             );
             pixels[di + 3] = 255;
           }

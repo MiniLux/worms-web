@@ -43,6 +43,16 @@ const WEAPON_FIRE_SPRITES: Record<string, string> = {
   shotgun: "worm_shotf",
 };
 
+/** Weapon put-away (gun-in) uses the same sprites as draw but in reverse */
+const WEAPON_PUTAWAY_SPRITES: Record<
+  string,
+  { texture: string; frames: number }
+> = {
+  shotgun: { texture: "worm_shotg", frames: 32 },
+  bazooka: { texture: "worm_bazlnk", frames: 7 },
+  grenade: { texture: "worm_throw", frames: 32 },
+};
+
 export class WormEntity {
   private sprite: Phaser.GameObjects.Sprite | null = null;
   private fallbackBody: Phaser.GameObjects.Ellipse | null = null;
@@ -515,6 +525,41 @@ export class WormEntity {
     this.scene.time.delayedCall(300, () => {
       this.isShowingWeaponFrame = false;
       this.currentAnim = "";
+    });
+  }
+
+  /** Play weapon put-away (gun-in) animation — draw animation in reverse */
+  playPutAwayAnim(): void {
+    if (!this.sprite) return;
+    const weaponId = this.holdingWeapon;
+    if (!weaponId) return;
+
+    const info = WEAPON_PUTAWAY_SPRITES[weaponId];
+    if (!info || !hasSpritesheet(this.scene, info.texture)) return;
+
+    const animKey = "putaway_" + info.texture;
+    if (!this.scene.anims.exists(animKey)) {
+      // Create reversed frame sequence
+      const frames: Array<{ key: string; frame: number }> = [];
+      for (let i = info.frames - 1; i >= 0; i--) {
+        frames.push({ key: info.texture, frame: i });
+      }
+      this.scene.anims.create({
+        key: animKey,
+        frames,
+        frameRate: 30,
+        repeat: 0,
+      });
+    }
+
+    this.drawAnimPlaying = true;
+    this.isShowingWeaponFrame = false;
+    this.currentAnim = "";
+    this.sprite.play(animKey);
+    this.sprite.once("animationcomplete", () => {
+      this.drawAnimPlaying = false;
+      this.currentAnim = "";
+      this.holdingWeapon = null;
     });
   }
 
