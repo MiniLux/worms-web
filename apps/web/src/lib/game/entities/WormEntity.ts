@@ -62,6 +62,7 @@ export class WormEntity {
   private aimAngle: number = 0;
   private isShowingWeaponFrame: boolean = false;
   private jumpAnimPlaying: boolean = false;
+  private isJumping: boolean = false; // true from jump until landing (voluntary jump, not knockback)
   private drawAnimPlaying: boolean = false;
   private powerGauge: Phaser.GameObjects.Graphics;
   private powerValue: number = 0;
@@ -185,7 +186,14 @@ export class WormEntity {
         repeat: -1,
         yoyo: true,
       },
-      { key: "worm_walk", texture: "worm_walk", end: 14, rate: 30, repeat: -1 },
+      {
+        key: "worm_walk",
+        texture: "worm_walk",
+        end: 14,
+        rate: 18,
+        repeat: -1,
+        yoyo: true,
+      },
       {
         key: "worm_jump_anim",
         texture: "worm_jump",
@@ -301,6 +309,15 @@ export class WormEntity {
       this.isWalking =
         Math.abs(this.state.vx) > 1 && Math.abs(this.state.vy) < 5;
     }
+
+    // Clear jump flag when worm has landed (velocity near zero)
+    if (
+      this.isJumping &&
+      Math.abs(this.state.vx) < 5 &&
+      Math.abs(this.state.vy) < 5
+    ) {
+      this.isJumping = false;
+    }
   }
 
   private applyFacing(facing: "left" | "right"): void {
@@ -410,26 +427,23 @@ export class WormEntity {
   /** Play jump or backflip animation, then allow normal state machine to take over */
   playJumpAnim(kind: "forward" | "backflip"): void {
     if (!this.sprite) return;
+    // Forward jump: play worm_jump_anim (pre-jump crouch + launch)
+    // Backflip: play worm_backflip_anim (the full backflip)
     const animKey =
       kind === "backflip" ? "worm_backflip_anim" : "worm_jump_anim";
     if (!this.scene.anims.exists(animKey)) return;
     this.jumpAnimPlaying = true;
+    this.isJumping = true;
     this.isShowingWeaponFrame = false;
     this.currentAnim = "";
 
-    // Backflip: temporarily flip sprite (worm jumps backward)
-    if (kind === "backflip") {
-      this.sprite.setFlipX(this.state.facing === "left");
-    }
+    // Backflip: keep the current facing direction — the worm looks forward
+    // while somersaulting backward. No special flip needed.
 
     this.sprite.play(animKey);
     this.sprite.once("animationcomplete", () => {
       this.jumpAnimPlaying = false;
       this.currentAnim = "";
-      // Restore correct facing after backflip
-      if (this.sprite) {
-        this.applyFacing(this.state.facing);
-      }
     });
   }
 
@@ -649,17 +663,18 @@ export class WormEntity {
     // Weapon draw animation takes priority
     if (this.drawAnimPlaying) return;
 
-    // Flying from knockback (not from jump — only when knocked by explosion)
-    if (Math.abs(this.state.vx) > 40 || this.state.vy < -40) {
+    // Airborne: use fall anim for voluntary jumps, fly anim for knockback
+    const airborne =
+      Math.abs(this.state.vx) > 40 || this.state.vy < -40 || this.state.vy > 30;
+    if (airborne) {
       this.isShowingWeaponFrame = false;
-      this.playAnimation("worm_fly_anim");
-      return;
-    }
-
-    // Falling
-    if (this.state.vy > 30) {
-      this.isShowingWeaponFrame = false;
-      this.playAnimation("worm_fall_anim");
+      if (this.isJumping) {
+        // Voluntary jump — use the gentle fall animation
+        this.playAnimation("worm_fall_anim");
+      } else {
+        // Knockback from explosion — use the tumbling fly animation
+        this.playAnimation("worm_fly_anim");
+      }
       return;
     }
 
