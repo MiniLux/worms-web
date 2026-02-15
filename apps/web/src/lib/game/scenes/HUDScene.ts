@@ -12,6 +12,9 @@ export class HUDScene extends Phaser.Scene {
   private timerInterval: ReturnType<typeof setInterval> | null = null;
   private timeRemaining: number = 45;
 
+  // Grenade fuse timer display
+  private fuseText: Phaser.GameObjects.Text | null = null;
+
   // Wind display (Worms 2 style bar)
   private windContainer!: Phaser.GameObjects.Container;
   private windBarFill!: Phaser.GameObjects.Rectangle;
@@ -64,6 +67,7 @@ export class HUDScene extends Phaser.Scene {
     gameScene.events.on("power_update", this.onPowerUpdate, this);
     gameScene.events.on("weapon_selected", this.onWeaponSelected, this);
     gameScene.events.on("charge_start", this.onChargeStart, this);
+    gameScene.events.on("grenade_fuse", this.onGrenadeFuse, this);
 
     // Listen for network events forwarded by GameScene
     this.events.on("state_sync", this.onStateSync, this);
@@ -224,7 +228,41 @@ export class HUDScene extends Phaser.Scene {
   private onAimUpdate(_angle: number): void {}
   private onPowerUpdate(_power: number): void {}
   private onChargeStart(): void {}
-  private onWeaponSelected(_weaponId: WeaponId): void {}
+
+  private onWeaponSelected(weaponId: WeaponId): void {
+    if (weaponId === "grenade") {
+      this.showFuseTimer(3);
+    } else {
+      this.hideFuseTimer();
+    }
+  }
+
+  private onGrenadeFuse(seconds: number): void {
+    this.showFuseTimer(seconds);
+  }
+
+  private showFuseTimer(seconds: number): void {
+    const { width } = this.cameras.main;
+    if (!this.fuseText) {
+      this.fuseText = this.add.text(width / 2, 30, "", {
+        fontSize: "12px",
+        fontFamily: "monospace",
+        color: "#ffcc00",
+        stroke: "#000000",
+        strokeThickness: 2,
+      });
+      this.fuseText.setOrigin(0.5);
+      this.fuseText.setDepth(100);
+    }
+    this.fuseText.setText(`Fuse: ${seconds}s`);
+    this.fuseText.setVisible(true);
+  }
+
+  private hideFuseTimer(): void {
+    if (this.fuseText) {
+      this.fuseText.setVisible(false);
+    }
+  }
 
   private onGameOver(msg: { winnerId: string | null; reason: string }): void {
     if (this.timerInterval) {

@@ -91,13 +91,14 @@ export function initializeGame(payload: GameInitPayload): GameState {
       worms,
       ammo,
       isConnected: false,
-      lastWormIndex: 0,
+      lastWormIndex: -1,
     };
   });
 
   // Set first worm of first player as active
   const firstWorm = players[0].worms[0];
   firstWorm.isActive = true;
+  players[0].lastWormIndex = 0;
 
   const wind = generateWind();
 
@@ -170,9 +171,13 @@ export function advanceTurn(state: GameState): GameServerMessage[] {
   }
 
   // Pick next worm in sequence — advance from lastWormIndex
-  let idx = (nextPlayer.lastWormIndex + 1) % nextPlayer.worms.length;
-  while (!nextPlayer.worms[idx].isAlive) {
+  // lastWormIndex is -1 when the player hasn't had a turn yet (picks worm 0 first)
+  const lastIdx = nextPlayer.lastWormIndex ?? -1;
+  let idx = (lastIdx + 1) % nextPlayer.worms.length;
+  let safety = 0;
+  while (!nextPlayer.worms[idx].isAlive && safety < nextPlayer.worms.length) {
     idx = (idx + 1) % nextPlayer.worms.length;
+    safety++;
   }
   const nextWorm = nextPlayer.worms[idx];
   nextPlayer.lastWormIndex = idx;
@@ -290,6 +295,7 @@ export function processFire(
   weaponId: WeaponId,
   angle: number,
   power: number,
+  fuseMs?: number,
 ): GameServerMessage[] {
   const worm = findWorm(state, state.activeWormId);
   if (!worm || !worm.isAlive) return [];
@@ -326,6 +332,9 @@ export function processFire(
       height: WORM_HEIGHT,
     }));
 
+  // Use client-specified fuse time if provided (grenade timer), otherwise weapon default
+  const effectiveFuseMs = fuseMs !== undefined ? fuseMs : def.fuseTime;
+
   const result = simulateBallistic(
     startX,
     startY,
@@ -333,7 +342,7 @@ export function processFire(
     power,
     state.wind,
     bitmap,
-    def.fuseTime,
+    effectiveFuseMs,
     def.bounceElasticity,
     def.affectedByWind,
     targetWorms,
@@ -399,6 +408,7 @@ export function processFire(
     type: "FIRE_RESULT",
     trajectory: result.trajectory,
     weaponId,
+    fuseMs: effectiveFuseMs > 0 ? effectiveFuseMs : undefined,
     explosions,
     terrainDestruction,
     damages,

@@ -457,16 +457,12 @@ export class TerrainRenderer {
       }
 
       // Third pass: draw grass using smoothed Y positions
-      // Only use the green half of the grass texture (left portion contains the
-      // actual grass blades; right portion is brown soil highlights that create
-      // visible rectangular artifacts when tiled over the soil texture)
-      const grassTileW = Math.floor(gW / 2);
-
+      // Use full texture width for seamless tiling, but filter out brown pixels
       for (let x = 0; x < TERRAIN_WIDTH; x++) {
         const topY = smoothY[x];
         if (topY < 0) continue;
 
-        const gx = x % grassTileW;
+        const gx = x % gW;
         for (let gy = 0; gy < gH; gy++) {
           const drawY = topY - Math.floor(gH / 3) + gy;
           if (drawY < 0 || drawY >= TERRAIN_HEIGHT) continue;
@@ -592,9 +588,6 @@ export class TerrainRenderer {
       const gW = this.grassW;
       const gH = this.grassH;
 
-      // Only use the green half of the grass texture (same as renderForestFull)
-      const grassTileW = Math.floor(gW / 2);
-
       // Find and smooth surface Y for each column in the region
       const regionSurfaceY = new Int32Array(maxX - minX);
       for (let x = minX; x < maxX; x++) {
@@ -631,7 +624,7 @@ export class TerrainRenderer {
         const topY = smoothRegionY[x - minX];
         if (topY < 0) continue;
 
-        const gx = x % grassTileW;
+        const gx = x % gW;
         for (let gy = 0; gy < gH; gy++) {
           const drawY = topY - Math.floor(gH / 3) + gy;
           if (drawY < minY || drawY >= maxY) continue;
@@ -643,7 +636,7 @@ export class TerrainRenderer {
           const ga = grass[gi + 3];
           if (ga < 10) continue;
 
-          // Skip brown pixels to avoid artifacts (same as renderForestFull)
+          // Skip brown pixels to avoid artifacts
           if (gr > gg && gg < 80) continue;
 
           const di = ((drawY - minY) * regionW + (x - minX)) * 4;

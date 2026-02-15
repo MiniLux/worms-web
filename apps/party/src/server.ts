@@ -136,7 +136,7 @@ export default class GameServer implements Party.Server {
         // No server action needed, purely client state
         break;
       case "FIRE":
-        this.handleFire(msg.weaponId, msg.angle, msg.power, sender);
+        this.handleFire(msg.weaponId, msg.angle, msg.power, sender, msg.fuseMs);
         break;
       case "FIRE_HITSCAN":
         this.handleHitscan(msg.weaponId, msg.angle, sender);
@@ -592,6 +592,7 @@ export default class GameServer implements Party.Server {
     angle: number,
     power: number,
     conn: Party.Connection,
+    fuseMs?: number,
   ): void {
     if (!this.canFire(conn) || !this.state) return;
     this.movingDirection = null;
@@ -601,6 +602,7 @@ export default class GameServer implements Party.Server {
       weaponId as WeaponId,
       angle,
       Math.max(0, Math.min(1, power)),
+      fuseMs,
     );
     for (const m of messages) this.broadcastAll(m);
 

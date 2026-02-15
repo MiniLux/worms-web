@@ -38,9 +38,13 @@ export class GameScene extends Phaser.Scene {
   // Input
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
 
+  // Grenade fuse timer (1-3 seconds, default 3)
+  private grenadeFuseSeconds: number = 3;
+
   // Projectile animation
   private projectileSprite: Phaser.GameObjects.Sprite | null = null;
   private projectileFallback: Phaser.GameObjects.Arc | null = null;
+  private grenadeCountdownText: Phaser.GameObjects.Text | null = null;
 
   // Teleport cursor
   private teleportCursor: Phaser.GameObjects.Sprite | null = null;
@@ -84,8 +88,9 @@ export class GameScene extends Phaser.Scene {
       worm_firblast: { file: "wfirbl1.png" },
       // Grenade throw with visible grenade
       worm_thrgrn: { file: "wthrgrn.png" },
-      // Grenade/throw put-away
-      worm_thrbak: { file: "wthrbak.png" },
+      // Grenade draw (get out) and put-away
+      worm_grnlnk: { file: "wgrnlnk.png" },
+      worm_grnbak: { file: "wgrnbak.png" },
       // Teleporter sprites
       worm_tellnk: { file: "wtellnk.png" },
       worm_telbak: { file: "wtelbak.png" },
@@ -441,10 +446,16 @@ export class GameScene extends Phaser.Scene {
       this.sendMessage({ type: "SKIP_TURN" });
     });
 
-    // Number keys 1-5: select weapon
+    // Number keys 1-5: select weapon (or set grenade fuse timer when grenade is selected)
     for (let i = 0; i < MVP_WEAPON_IDS.length; i++) {
       this.input.keyboard!.on(`keydown-${i + 1}`, () => {
         if (!this.isMyTurn) return;
+        // When grenade is selected and aiming, keys 1-3 set fuse timer
+        if (this.selectedWeapon === "grenade" && this.isAiming && i < 3) {
+          this.grenadeFuseSeconds = i + 1;
+          this.events.emit("grenade_fuse", this.grenadeFuseSeconds);
+          return;
+        }
         this.selectWeapon(MVP_WEAPON_IDS[i]);
       });
     }
@@ -883,6 +894,7 @@ export class GameScene extends Phaser.Scene {
   private onFireResult(msg: {
     trajectory: TrajectoryPoint[];
     weaponId: WeaponId;
+    fuseMs?: number;
     explosions: Array<{ x: number; y: number; radius: number }>;
     terrainDestruction: Array<{ x: number; y: number; radius: number }>;
     damages: Array<{
@@ -895,9 +907,14 @@ export class GameScene extends Phaser.Scene {
     deaths: Array<{ wormId: string; cause: string }>;
   }): void {
     if (msg.trajectory.length > 0) {
-      this.animateProjectile(msg.trajectory, msg.weaponId, () => {
-        this.applyFireEffects(msg);
-      });
+      this.animateProjectile(
+        msg.trajectory,
+        msg.weaponId,
+        () => {
+          this.applyFireEffects(msg);
+        },
+        msg.fuseMs,
+      );
     } else {
       this.applyFireEffects(msg);
     }
@@ -1047,6 +1064,7 @@ export class GameScene extends Phaser.Scene {
     trajectory: TrajectoryPoint[],
     weaponId: WeaponId,
     onComplete: () => void,
+    fuseMs?: number,
   ): void {
     if (trajectory.length < 2) {
       onComplete();
@@ -1076,9 +1094,27 @@ export class GameScene extends Phaser.Scene {
         0,
       );
       this.projectileSprite.setDepth(6);
-      this.projectileSprite.setScale(0.5);
+      this.projectileSprite.setScale(1.0);
       if (this.anims.exists("anim_grenade")) {
         this.projectileSprite.play("anim_grenade");
+      }
+      // Create countdown text above grenade if fuse timer is set
+      if (fuseMs && fuseMs > 0) {
+        this.grenadeCountdownText = this.add.text(
+          trajectory[0].x,
+          trajectory[0].y - 20,
+          String(Math.ceil(fuseMs / 1000)),
+          {
+            fontSize: "14px",
+            fontFamily: "monospace",
+            color: "#ffffff",
+            stroke: "#000000",
+            strokeThickness: 3,
+            fontStyle: "bold",
+          },
+        );
+        this.grenadeCountdownText.setOrigin(0.5);
+        this.grenadeCountdownText.setDepth(7);
       }
     } else {
       this.projectileFallback = this.add.circle(
@@ -1119,6 +1155,8 @@ export class GameScene extends Phaser.Scene {
           const last = trajectory[trajectory.length - 1];
           this.projectileSprite?.setPosition(last.x, last.y);
           this.projectileFallback?.setPosition(last.x, last.y);
+          this.grenadeCountdownText?.destroy();
+          this.grenadeCountdownText = null;
           this.projectileSprite?.destroy();
           this.projectileFallback?.destroy();
           this.projectileSprite = null;
@@ -1167,6 +1205,13 @@ export class GameScene extends Phaser.Scene {
           this.projectileFallback.setPosition(x, y);
         }
 
+        // Update grenade countdown text
+        if (this.grenadeCountdownText && fuseMs) {
+          this.grenadeCountdownText.setPosition(x, y - 20);
+          const remaining = Math.ceil((fuseMs - elapsed) / 1000);
+          this.grenadeCountdownText.setText(String(Math.max(0, remaining)));
+        }
+
         // Spawn smoke puffs behind missile
         if (hasSmoke && elapsed - lastSmokeTime > smokeInterval) {
           lastSmokeTime = elapsed;
@@ -1200,12 +1245,23 @@ export class GameScene extends Phaser.Scene {
       });
       this.isAiming = true;
     } else {
-      this.sendMessage({
+      const fireMsg: {
+        type: "FIRE";
+        weaponId: WeaponId;
+        angle: number;
+        power: number;
+        fuseMs?: number;
+      } = {
         type: "FIRE",
         weaponId: this.selectedWeapon,
         angle: this.currentAimAngle,
         power: this.currentPower,
-      });
+      };
+      // Send fuse timer for grenades
+      if (this.selectedWeapon === "grenade") {
+        fireMsg.fuseMs = this.grenadeFuseSeconds * 1000;
+      }
+      this.sendMessage(fireMsg);
       // Play weapon put-away animation for projectile weapons (bazooka, grenade)
       activeWorm?.playPutAwayAnim();
     }

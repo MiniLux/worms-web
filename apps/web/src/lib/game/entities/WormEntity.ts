@@ -37,7 +37,7 @@ const WEAPON_DRAW_SPRITES: Record<string, { texture: string; frames: number }> =
   {
     shotgun: { texture: "worm_shotg", frames: 32 },
     bazooka: { texture: "worm_bazlnk", frames: 7 },
-    grenade: { texture: "worm_thrgrn", frames: 32 },
+    grenade: { texture: "worm_grnlnk", frames: 10 },
     teleport: { texture: "worm_tellnk", frames: 10 },
   };
 
@@ -55,7 +55,7 @@ const WEAPON_PUTAWAY_SPRITES: Record<
 > = {
   shotgun: { texture: "worm_shotg", frames: 32, reverse: true },
   bazooka: { texture: "worm_bazlnk", frames: 7, reverse: true },
-  grenade: { texture: "worm_thrbak", frames: 10, reverse: false },
+  grenade: { texture: "worm_grnbak", frames: 10, reverse: false },
   teleport: { texture: "worm_telbak", frames: 10, reverse: false },
 };
 

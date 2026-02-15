@@ -133,7 +133,13 @@ export type GameClientMessage =
   | { type: "STOP_MOVE" }
   | { type: "JUMP"; kind: "forward" | "backflip" }
   | { type: "SELECT_WEAPON"; weaponId: WeaponId }
-  | { type: "FIRE"; weaponId: WeaponId; angle: number; power: number }
+  | {
+      type: "FIRE";
+      weaponId: WeaponId;
+      angle: number;
+      power: number;
+      fuseMs?: number;
+    }
   | { type: "FIRE_HITSCAN"; weaponId: WeaponId; angle: number }
   | { type: "FIRE_MELEE"; weaponId: WeaponId; direction: "left" | "right" }
   | { type: "USE_TELEPORT"; x: number; y: number }
@@ -204,6 +210,7 @@ export type GameServerMessage =
       type: "FIRE_RESULT";
       trajectory: TrajectoryPoint[];
       weaponId: WeaponId;
+      fuseMs?: number;
       explosions: ExplosionEvent[];
       terrainDestruction: TerrainDestructionEvent[];
       damages: DamageEvent[];
