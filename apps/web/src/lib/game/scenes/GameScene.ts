@@ -447,18 +447,25 @@ export class GameScene extends Phaser.Scene {
     });
 
     // Number keys 1-5: select weapon (or set grenade fuse timer when grenade is selected)
-    for (let i = 0; i < MVP_WEAPON_IDS.length; i++) {
-      this.input.keyboard!.on(`keydown-${i + 1}`, () => {
-        if (!this.isMyTurn) return;
-        // When grenade is selected and aiming, keys 1-3 set fuse timer
-        if (this.selectedWeapon === "grenade" && this.isAiming && i < 3) {
-          this.grenadeFuseSeconds = i + 1;
-          this.events.emit("grenade_fuse", this.grenadeFuseSeconds);
-          return;
-        }
-        this.selectWeapon(MVP_WEAPON_IDS[i]);
-      });
-    }
+    // Uses physical key codes (Digit1-Digit5) so it works on both QWERTY and AZERTY
+    this.input.keyboard!.on("keydown", (event: KeyboardEvent) => {
+      if (!this.isMyTurn) return;
+      const digitMatch = event.code.match(/^Digit([1-5])$/);
+      if (!digitMatch) return;
+      const num = parseInt(digitMatch[1], 10); // 1-5
+      const idx = num - 1; // 0-4
+
+      // When grenade is selected and aiming, keys 1-3 set fuse timer
+      if (this.selectedWeapon === "grenade" && this.isAiming && num <= 3) {
+        this.grenadeFuseSeconds = num;
+        this.events.emit("grenade_fuse", this.grenadeFuseSeconds);
+        return;
+      }
+
+      if (idx < MVP_WEAPON_IDS.length) {
+        this.selectWeapon(MVP_WEAPON_IDS[idx]);
+      }
+    });
 
     // Hide bouncing arrow on any keypress during my turn
     this.input.keyboard!.on("keydown", () => {
@@ -1085,7 +1092,7 @@ export class GameScene extends Phaser.Scene {
         0,
       );
       this.projectileSprite.setDepth(6);
-      this.projectileSprite.setScale(0.6);
+      this.projectileSprite.setScale(1.0);
     } else if (useGrenade) {
       this.projectileSprite = this.add.sprite(
         trajectory[0].x,
@@ -1217,7 +1224,7 @@ export class GameScene extends Phaser.Scene {
           lastSmokeTime = elapsed;
           const smoke = this.add.sprite(x, y, "fx_smoke", 0);
           smoke.setDepth(5);
-          smoke.setScale(0.4);
+          smoke.setScale(1.0);
           smoke.setAlpha(0.7);
           smoke.play("anim_smoke");
           smoke.once("animationcomplete", () => smoke.destroy());

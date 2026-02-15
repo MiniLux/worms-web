@@ -436,7 +436,30 @@ export class TerrainRenderer {
         }
       }
 
-      // Second pass: smooth surface Y to prevent jagged grass placement
+      // Second pass: filter out crater surfaces — only keep grass where
+      // there's open sky above (no terrain for at least 30px)
+      const MIN_SKY_ABOVE = 30;
+      for (let x = 0; x < TERRAIN_WIDTH; x++) {
+        const sy = surfaceY[x];
+        if (sy < 0) continue;
+        // Check if there's terrain above this surface within MIN_SKY_ABOVE pixels
+        let hasTerrrainAbove = false;
+        for (
+          let checkY = Math.max(0, sy - MIN_SKY_ABOVE);
+          checkY < sy;
+          checkY++
+        ) {
+          if (getBitmapPixel(this.bitmap, x, checkY)) {
+            hasTerrrainAbove = true;
+            break;
+          }
+        }
+        if (hasTerrrainAbove) {
+          surfaceY[x] = -1; // Not a true surface, skip grass here
+        }
+      }
+
+      // Third pass: smooth surface Y to prevent jagged grass placement
       const smoothY = new Int32Array(TERRAIN_WIDTH);
       const smoothRadius = 3;
       for (let x = 0; x < TERRAIN_WIDTH; x++) {
@@ -456,8 +479,7 @@ export class TerrainRenderer {
         smoothY[x] = Math.round(sum / count);
       }
 
-      // Third pass: draw grass using smoothed Y positions
-      // Use full texture width for seamless tiling, but filter out brown pixels
+      // Fourth pass: draw grass using smoothed Y positions
       for (let x = 0; x < TERRAIN_WIDTH; x++) {
         const topY = smoothY[x];
         if (topY < 0) continue;
@@ -588,7 +610,7 @@ export class TerrainRenderer {
       const gW = this.grassW;
       const gH = this.grassH;
 
-      // Find and smooth surface Y for each column in the region
+      // Find surface Y for each column in the region
       const regionSurfaceY = new Int32Array(maxX - minX);
       for (let x = minX; x < maxX; x++) {
         regionSurfaceY[x - minX] = -1;
@@ -597,6 +619,28 @@ export class TerrainRenderer {
             regionSurfaceY[x - minX] = y;
             break;
           }
+        }
+      }
+
+      // Filter out crater surfaces — only keep grass where there's open sky above
+      const MIN_SKY_ABOVE = 30;
+      for (let i = 0; i < maxX - minX; i++) {
+        const sy = regionSurfaceY[i];
+        if (sy < 0) continue;
+        const x = minX + i;
+        let hasTerrainAbove = false;
+        for (
+          let checkY = Math.max(0, sy - MIN_SKY_ABOVE);
+          checkY < sy;
+          checkY++
+        ) {
+          if (getBitmapPixel(this.bitmap, x, checkY)) {
+            hasTerrainAbove = true;
+            break;
+          }
+        }
+        if (hasTerrainAbove) {
+          regionSurfaceY[i] = -1;
         }
       }
 

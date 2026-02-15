@@ -201,6 +201,22 @@ export function simulateBallistic(
         const dx = Math.abs(Math.round(x) - w.x);
         const dy = Math.abs(Math.round(y) - w.y);
         if (dx < w.width / 2 + 4 && dy < w.height / 2 + 4) {
+          // Bouncy projectiles (grenades) bounce off worms, don't explode
+          if (bounceElasticity > 0) {
+            // Bounce off worm — reverse velocity
+            const prevX = trajectory[trajectory.length - 2]?.x ?? x;
+            const prevY = trajectory[trajectory.length - 2]?.y ?? y;
+            x = prevX;
+            y = prevY;
+            trajectory[trajectory.length - 1] = {
+              x: Math.round(x),
+              y: Math.round(y),
+              t,
+            };
+            vy = -vy * bounceElasticity;
+            vx = -vx * bounceElasticity;
+            break;
+          }
           return {
             trajectory,
             impactX: Math.round(x),

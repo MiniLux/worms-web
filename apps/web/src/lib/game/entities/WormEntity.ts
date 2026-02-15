@@ -156,26 +156,14 @@ export class WormEntity {
     this.aimLine.setDepth(5);
     this.aimLine.setVisible(false);
 
-    // Crosshair sprite (animated, team colored)
+    // Crosshair sprite (static, team colored — positioned along aim direction)
     const crosshairKey =
       teamColor === "blue" ? "crosshair_blue" : "crosshair_red";
     if (hasSpritesheet(scene, crosshairKey)) {
-      if (!scene.anims.exists("anim_crosshair_" + crosshairKey)) {
-        scene.anims.create({
-          key: "anim_crosshair_" + crosshairKey,
-          frames: scene.anims.generateFrameNumbers(crosshairKey, {
-            start: 0,
-            end: 31,
-          }),
-          frameRate: 30,
-          repeat: -1,
-        });
-      }
       this.crosshairSprite = scene.add.sprite(0, 0, crosshairKey, 0);
       this.crosshairSprite.setDepth(7);
       this.crosshairSprite.setScale(1.0);
       this.crosshairSprite.setVisible(false);
-      this.crosshairSprite.play("anim_crosshair_" + crosshairKey);
     }
 
     this.powerGauge = scene.add.graphics();
