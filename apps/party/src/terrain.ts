@@ -227,7 +227,35 @@ export function generateTerrain(
     carveCircle(bitmap, cx, cy, r);
   }
 
-  // ── Recalculate heightmap after cave carving ──
+  // ── Floating islands above the main terrain ──
+  const numIslands = 3 + Math.floor(rng() * 4); // 3-6 floating islands
+  for (let i = 0; i < numIslands; i++) {
+    const ix = Math.floor(TERRAIN_WIDTH * (0.1 + rng() * 0.8));
+    const mainSurface = heightmap[Math.max(0, Math.min(TERRAIN_WIDTH - 1, ix))];
+    // Place island 40-120px above the main terrain surface
+    const iy = Math.max(30, mainSurface - 40 - Math.floor(rng() * 80));
+    const islandW = 50 + Math.floor(rng() * 80); // 50-130px wide
+    const islandH = 20 + Math.floor(rng() * 20); // 20-40px tall
+
+    // Draw an elliptical island shape with a flat top
+    const halfW = Math.floor(islandW / 2);
+    for (let dx = -halfW; dx <= halfW; dx++) {
+      const px = ix + dx;
+      if (px < 0 || px >= TERRAIN_WIDTH) continue;
+      // Elliptical: height tapers at edges
+      const edgeT = 1 - (dx * dx) / (halfW * halfW);
+      const colH = Math.max(4, Math.floor(islandH * edgeT));
+      // Flat top, rounded bottom
+      for (let dy = 0; dy < colH; dy++) {
+        const py = iy + dy;
+        if (py >= 0 && py < TERRAIN_HEIGHT) {
+          setBitmapPixel(bitmap, px, py, true);
+        }
+      }
+    }
+  }
+
+  // ── Recalculate heightmap after cave carving and floating islands ──
   for (let x = 0; x < TERRAIN_WIDTH; x++) {
     let found = false;
     for (let y = 0; y < TERRAIN_HEIGHT; y++) {

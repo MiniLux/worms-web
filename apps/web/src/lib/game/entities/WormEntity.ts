@@ -586,7 +586,7 @@ export class WormEntity {
   }
 
   /** Smoothly scale crosshair in/out */
-  private scaleCrosshairTo(targetScale: number, duration: number = 150): void {
+  private scaleCrosshairTo(targetScale: number, duration: number = 30): void {
     if (!this.crosshairSprite) return;
     if (this.crosshairTween) {
       this.crosshairTween.stop();
@@ -639,7 +639,7 @@ export class WormEntity {
           this.y + Math.sin(angle) * distance,
         );
         // Pick frame based on aim angle + 45deg offset (32 frames, frame 0 = up, clockwise)
-        let normalizedAngle = angle + Math.PI / 2 + Math.PI / 4; // offset so 0 = up, +45deg rotation
+        let normalizedAngle = angle + Math.PI / 2 + Math.PI / 4 + Math.PI / 12; // offset so 0 = up, +45deg +15deg rotation
         if (normalizedAngle < 0) normalizedAngle += 2 * Math.PI;
         normalizedAngle = normalizedAngle % (2 * Math.PI);
         const frame = Math.round((normalizedAngle / (2 * Math.PI)) * 32) % 32;
@@ -693,7 +693,7 @@ export class WormEntity {
     this.aimLine.setVisible(false);
     this.aimLine.clear();
     if (this.crosshairSprite) {
-      this.scaleCrosshairTo(0, 100);
+      this.scaleCrosshairTo(0);
     }
   }
 
