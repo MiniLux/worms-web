@@ -175,6 +175,7 @@ export class WormEntity {
       end: number;
       rate: number;
       repeat: number;
+      yoyo?: boolean;
     }> = [
       {
         key: "worm_idle",
@@ -182,6 +183,7 @@ export class WormEntity {
         end: 19,
         rate: 30,
         repeat: -1,
+        yoyo: true,
       },
       { key: "worm_walk", texture: "worm_walk", end: 14, rate: 30, repeat: -1 },
       {
@@ -254,6 +256,7 @@ export class WormEntity {
         }),
         frameRate: d.rate,
         repeat: d.repeat,
+        yoyo: d.yoyo ?? false,
       });
     }
   }
@@ -825,6 +828,7 @@ export class WormEntity {
           }),
           frameRate: 30,
           repeat: -1,
+          yoyo: true,
         });
       }
       grave.play(animKey);
