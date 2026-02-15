@@ -1014,7 +1014,11 @@ export class GameScene extends Phaser.Scene {
       const entity = this.wormEntities.get(dmg.wormId);
       if (entity) {
         entity.flashDamage(dmg.damage);
-        entity.updateState({ health: dmg.newHealth });
+        entity.updateState({
+          health: dmg.newHealth,
+          vx: dmg.knockbackVx ?? 0,
+          vy: dmg.knockbackVy ?? 0,
+        });
       }
       this.updateGameStateWorm(dmg.wormId, { health: dmg.newHealth });
     }
@@ -1026,6 +1030,9 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.refreshHUDPanels();
+
+    // Tell server to immediately apply knockback (instead of waiting for safety timer)
+    this.sendMessage({ type: "APPLY_KNOCKBACK" });
   }
 
   private onHitscanResult(msg: {

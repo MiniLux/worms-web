@@ -609,7 +609,7 @@ export class TerrainRenderer {
       const regionSurfaceY = new Int32Array(maxX - minX);
       for (let x = minX; x < maxX; x++) {
         regionSurfaceY[x - minX] = -1;
-        for (let y = Math.max(0, minY - gH); y < maxY; y++) {
+        for (let y = 0; y < maxY; y++) {
           if (getBitmapPixel(this.bitmap, x, y)) {
             regionSurfaceY[x - minX] = y;
             break;

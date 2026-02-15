@@ -153,6 +153,9 @@ export default class GameServer implements Party.Server {
       case "PAUSE_TIMER":
         this.handlePauseTimer(sender);
         break;
+      case "APPLY_KNOCKBACK":
+        this.handleApplyKnockback(sender);
+        break;
       case "CHAT":
         this.handleChat(msg.text, sender);
         break;
@@ -699,6 +702,30 @@ export default class GameServer implements Party.Server {
         Date.now() + this.state.turnTimeRemaining * 1000,
       );
       this.checkCpuTurn();
+    }
+  }
+
+  private handleApplyKnockback(_conn: Party.Connection): void {
+    if (!this.state) return;
+
+    for (const player of this.state.players) {
+      for (const worm of player.worms) {
+        if (!worm.isAlive || !worm.pendingKnockback) continue;
+
+        const kb = worm.pendingKnockback;
+        worm.health = Math.max(0, worm.health - kb.damage);
+        worm.vx += kb.vx;
+        worm.vy += kb.vy;
+        if (worm.health <= 0) {
+          worm.isAlive = false;
+          this.broadcastAll({
+            type: "WORM_DIED",
+            wormId: worm.id,
+            cause: "hp",
+          });
+        }
+        worm.pendingKnockback = undefined;
+      }
     }
   }
 

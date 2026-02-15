@@ -2,11 +2,9 @@ import {
   TERRAIN_WIDTH,
   TERRAIN_HEIGHT,
   WATER_LEVEL,
-  WORM_WIDTH,
   encodeBitmap,
   setBitmapPixel,
   getBitmapPixel,
-  findSurfaceY,
 } from "@worms/shared";
 import type { TerrainData, TerrainTheme } from "@worms/shared";
 
@@ -22,70 +20,177 @@ function mulberry32(seed: number): () => number {
   };
 }
 
-// ─── Simplex-like 1D noise (seeded) ────────────────────
+// ─── Hash-based noise functions ─────────────────────────
 
-function seededNoise1D(
-  rng: () => number,
-  octaves: number,
-  x: number,
-  frequency: number,
-  amplitude: number
-): number {
-  // Generate a permutation table from the RNG
-  // We cache this via closure in generateTerrain
-  let val = 0;
-  let freq = frequency;
-  let amp = amplitude;
-  for (let o = 0; o < octaves; o++) {
-    val += smoothNoise(rng, x * freq) * amp;
-    freq *= 2;
-    amp *= 0.5;
-  }
-  return val;
-}
-
-// Simple interpolated noise using seeded hash
-function smoothNoise(rng: () => number, x: number): number {
-  const ix = Math.floor(x);
-  const fx = x - ix;
-  // Use rng seeded values at integer positions
-  const a = hashFloat(ix);
-  const b = hashFloat(ix + 1);
-  // Cosine interpolation
-  const t = (1 - Math.cos(fx * Math.PI)) / 2;
-  return a * (1 - t) + b * t;
-}
-
-// Simple hash for integer → [0,1]
+/** Hash an integer seed to [0,1] */
 function hashFloat(n: number): number {
   let x = ((n * 1103515245 + 12345) & 0x7fffffff) >>> 0;
   x = ((x * 1103515245 + 12345) & 0x7fffffff) >>> 0;
   return (x & 0xfffff) / 0xfffff;
 }
 
+/** Hash two integers (seed + 2D coords) to [0,1] */
+function hashFloat2D(seed: number, ix: number, iy: number): number {
+  let n = seed * 374761393 + ix * 1103515245 + iy * 12345;
+  n = ((n * 1103515245 + 12345) & 0x7fffffff) >>> 0;
+  n = ((n * 1103515245 + 12345) & 0x7fffffff) >>> 0;
+  return (n & 0xfffff) / 0xfffff;
+}
+
+/** 1D interpolated noise: seed-based, returns [-1, 1] */
+function hashNoise(seed: number, x: number, frequency: number): number {
+  const fx = x * frequency;
+  const ix = Math.floor(fx);
+  const frac = fx - ix;
+  const a = hashFloat(seed * 7919 + ix);
+  const b = hashFloat(seed * 7919 + ix + 1);
+  const t = (1 - Math.cos(frac * Math.PI)) / 2;
+  return (a * (1 - t) + b * t) * 2 - 1;
+}
+
+/** 2D interpolated noise: seed-based, returns [-1, 1] */
+function hashNoise2D(
+  seed: number,
+  x: number,
+  y: number,
+  frequency: number,
+): number {
+  const fx = x * frequency;
+  const fy = y * frequency;
+  const ix = Math.floor(fx);
+  const iy = Math.floor(fy);
+  const fracX = fx - ix;
+  const fracY = fy - iy;
+
+  const v00 = hashFloat2D(seed, ix, iy);
+  const v10 = hashFloat2D(seed, ix + 1, iy);
+  const v01 = hashFloat2D(seed, ix, iy + 1);
+  const v11 = hashFloat2D(seed, ix + 1, iy + 1);
+
+  const tx = (1 - Math.cos(fracX * Math.PI)) / 2;
+  const ty = (1 - Math.cos(fracY * Math.PI)) / 2;
+
+  const top = v00 * (1 - tx) + v10 * tx;
+  const bot = v01 * (1 - tx) + v11 * tx;
+  return (top * (1 - ty) + bot * ty) * 2 - 1;
+}
+
+/** Fractal Brownian motion (2D) — layered noise octaves */
+function fbm2D(
+  seed: number,
+  x: number,
+  y: number,
+  octaves: number,
+  baseFreq: number,
+): number {
+  let value = 0;
+  let freq = baseFreq;
+  let amp = 1;
+  let maxAmp = 0;
+  for (let o = 0; o < octaves; o++) {
+    value += hashNoise2D(seed + o * 3571, x, y, freq) * amp;
+    maxAmp += amp;
+    freq *= 2;
+    amp *= 0.5;
+  }
+  return value / maxAmp;
+}
+
 // ─── Terrain Generation ─────────────────────────────────
 
 const BITMAP_ROW_BYTES = Math.ceil(TERRAIN_WIDTH / 8);
 
-export function generateTerrain(seed: number, theme: TerrainTheme): TerrainData {
+export function generateTerrain(
+  seed: number,
+  theme: TerrainTheme,
+): TerrainData {
   const rng = mulberry32(seed);
   const bitmap = new Uint8Array(BITMAP_ROW_BYTES * TERRAIN_HEIGHT);
   const heightmap: number[] = new Array(TERRAIN_WIDTH);
 
-  // Generate height profile using layered noise
-  const baseY = TERRAIN_HEIGHT * 0.45; // baseline around 45% from top
-  const amplitude = TERRAIN_HEIGHT * 0.25; // ±25% variation
+  // ── Height profile: dramatic hills + valleys like Worms 2 ──
+  const baseY = TERRAIN_HEIGHT * 0.42;
+  const amplitude = TERRAIN_HEIGHT * 0.35; // ±35% — more dramatic than before
+
+  // Pick 1-2 valley positions that dip down near water, creating distinct landmasses
+  const numValleys = 1 + Math.floor(rng() * 2); // 1-2 valleys
+  const valleys: { center: number; width: number; depth: number }[] = [];
+  for (let i = 0; i < numValleys; i++) {
+    valleys.push({
+      center: 0.2 + rng() * 0.6, // normalized [0.2, 0.8]
+      width: 0.05 + rng() * 0.08, // narrow gap
+      depth: 0.7 + rng() * 0.3, // how deep (0.7-1.0, 1.0 = to water)
+    });
+  }
+
+  // Pick 4-8 flat platform spots for worm placement
+  const numPlatforms = 4 + Math.floor(rng() * 5);
+  const platforms: { center: number; width: number }[] = [];
+  for (let i = 0; i < numPlatforms; i++) {
+    platforms.push({
+      center: 0.08 + rng() * 0.84,
+      width: 30 + rng() * 50,
+    });
+  }
 
   for (let x = 0; x < TERRAIN_WIDTH; x++) {
-    // Multi-octave noise for interesting terrain
-    let h = 0;
-    h += Math.sin((x / TERRAIN_WIDTH) * Math.PI) * 0.3; // gentle arch
-    h += hashNoise(seed, x, 0.003) * 0.5; // large hills
-    h += hashNoise(seed + 1000, x, 0.01) * 0.25; // medium bumps
-    h += hashNoise(seed + 2000, x, 0.03) * 0.1; // small detail
+    const nx = x / TERRAIN_WIDTH; // normalized [0,1]
 
-    const surfaceY = Math.round(baseY + h * amplitude);
-    heightmap[x] = Math.max(20, Math.min(WATER_LEVEL - 20, surfaceY));
+    // 5-octave noise for rich, dramatic terrain
+    let h = 0;
+    h += hashNoise(seed, x, 0.002) * 0.45; // massive rolling hills
+    h += hashNoise(seed + 1000, x, 0.005) * 0.25; // large features
+    h += hashNoise(seed + 2000, x, 0.015) * 0.15; // medium bumps
+    h += hashNoise(seed + 3000, x, 0.04) * 0.1; // small detail
+    h += hashNoise(seed + 4000, x, 0.1) * 0.05; // fine grit
+
+    // Edge fade — terrain tapers off at edges creating an island shape
+    const edgeFade = Math.min(1, nx * 6, (1 - nx) * 6); // sharp taper within ~17% of edges
+    const edgePush = 1 - edgeFade; // 0 in middle, 1 at extreme edges
+
+    // Valley cuts — deep notches creating distinct landmasses
+    let valleyMul = 1;
+    for (const v of valleys) {
+      const dist = Math.abs(nx - v.center);
+      if (dist < v.width) {
+        const t = 1 - dist / v.width;
+        const valleyShape = t * t * (3 - 2 * t); // smoothstep
+        valleyMul = Math.min(valleyMul, 1 - valleyShape * v.depth);
+      }
+    }
+
+    let surfaceY = baseY + h * amplitude;
+
+    // Apply valley: push surface down toward water
+    if (valleyMul < 1) {
+      surfaceY = surfaceY + (WATER_LEVEL - 5 - surfaceY) * (1 - valleyMul);
+    }
+
+    // Apply edge fade: push surface down toward water at edges
+    if (edgePush > 0) {
+      surfaceY = surfaceY + (WATER_LEVEL - 5 - surfaceY) * edgePush;
+    }
+
+    heightmap[x] = Math.max(
+      30,
+      Math.min(WATER_LEVEL - 10, Math.round(surfaceY)),
+    );
+  }
+
+  // Flatten platform areas gently (blend toward local average)
+  for (const plat of platforms) {
+    const cx = Math.round(plat.center * TERRAIN_WIDTH);
+    const halfW = Math.round(plat.width / 2);
+    const startX = Math.max(0, cx - halfW);
+    const endX = Math.min(TERRAIN_WIDTH - 1, cx + halfW);
+    const midY = heightmap[Math.min(TERRAIN_WIDTH - 1, cx)];
+    for (let x = startX; x <= endX; x++) {
+      const t = 1 - Math.abs(x - cx) / halfW;
+      const blend = t * t * (3 - 2 * t); // smoothstep
+      heightmap[x] = Math.round(
+        heightmap[x] * (1 - blend * 0.7) + midY * blend * 0.7,
+      );
+    }
   }
 
   // Fill bitmap: solid below surface, air above
@@ -96,14 +201,45 @@ export function generateTerrain(seed: number, theme: TerrainTheme): TerrainData 
     }
   }
 
-  // Add some caves (random circles carved out)
-  const numCaves = 3 + Math.floor(rng() * 5);
-  for (let i = 0; i < numCaves; i++) {
+  // ── 2D noise cave system ──
+  // Carve connected tunnels using thresholded fbm2D
+  const caveThreshold = 0.28 + rng() * 0.1; // randomize density per map
+  for (let x = 0; x < TERRAIN_WIDTH; x++) {
+    const surface = heightmap[x];
+    const minCaveY = surface + 25; // don't carve too close to surface
+    for (let y = minCaveY; y < WATER_LEVEL - 15; y++) {
+      const n = fbm2D(seed + 9999, x, y, 4, 0.008);
+      if (n > caveThreshold) {
+        setBitmapPixel(bitmap, x, y, false);
+      }
+    }
+  }
+
+  // Supplement with 2-4 random circle caves for variety
+  const numCircleCaves = 2 + Math.floor(rng() * 3);
+  for (let i = 0; i < numCircleCaves; i++) {
     const cx = Math.floor(rng() * TERRAIN_WIDTH);
-    const minSurface = heightmap[Math.max(0, Math.min(TERRAIN_WIDTH - 1, cx))];
-    const cy = Math.floor(minSurface + rng() * (WATER_LEVEL - minSurface - 40));
-    const r = 20 + Math.floor(rng() * 30);
+    const surfaceAtCx = heightmap[Math.max(0, Math.min(TERRAIN_WIDTH - 1, cx))];
+    const cy = Math.floor(
+      surfaceAtCx + 30 + rng() * (WATER_LEVEL - surfaceAtCx - 70),
+    );
+    const r = 25 + Math.floor(rng() * 35);
     carveCircle(bitmap, cx, cy, r);
+  }
+
+  // ── Recalculate heightmap after cave carving ──
+  for (let x = 0; x < TERRAIN_WIDTH; x++) {
+    let found = false;
+    for (let y = 0; y < TERRAIN_HEIGHT; y++) {
+      if (getBitmapPixel(bitmap, x, y)) {
+        heightmap[x] = y;
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      heightmap[x] = WATER_LEVEL;
+    }
   }
 
   return {
@@ -114,17 +250,12 @@ export function generateTerrain(seed: number, theme: TerrainTheme): TerrainData 
   };
 }
 
-function hashNoise(seed: number, x: number, frequency: number): number {
-  const fx = x * frequency;
-  const ix = Math.floor(fx);
-  const frac = fx - ix;
-  const a = hashFloat(seed * 7919 + ix);
-  const b = hashFloat(seed * 7919 + ix + 1);
-  const t = (1 - Math.cos(frac * Math.PI)) / 2;
-  return (a * (1 - t) + b * t) * 2 - 1; // range [-1, 1]
-}
-
-function carveCircle(bitmap: Uint8Array, cx: number, cy: number, radius: number): void {
+function carveCircle(
+  bitmap: Uint8Array,
+  cx: number,
+  cy: number,
+  radius: number,
+): void {
   const r2 = radius * radius;
   for (let dy = -radius; dy <= radius; dy++) {
     for (let dx = -radius; dx <= radius; dx++) {
@@ -148,7 +279,7 @@ export interface SpawnPoint {
  */
 export function getSpawnPoints(
   bitmap: Uint8Array,
-  count: number
+  count: number,
 ): SpawnPoint[] {
   const margin = 100;
   const usableWidth = TERRAIN_WIDTH - 2 * margin;

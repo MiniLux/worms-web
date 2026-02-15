@@ -85,6 +85,7 @@ export class WormEntity {
   private powerValue: number = 0;
   private showPowerGauge: boolean = false;
   private crosshairSprite: Phaser.GameObjects.Sprite | null = null;
+  private crosshairTween: Phaser.Tweens.Tween | null = null;
   private arrowSprite: Phaser.GameObjects.Sprite | null = null;
   private labelsHidden: boolean = false;
   private nameBg: Phaser.GameObjects.Graphics;
@@ -584,6 +585,40 @@ export class WormEntity {
     });
   }
 
+  /** Smoothly scale crosshair in/out */
+  private scaleCrosshairTo(targetScale: number, duration: number = 150): void {
+    if (!this.crosshairSprite) return;
+    if (this.crosshairTween) {
+      this.crosshairTween.stop();
+      this.crosshairTween = null;
+    }
+    if (targetScale <= 0) {
+      this.crosshairTween = this.scene.tweens.add({
+        targets: this.crosshairSprite,
+        scaleX: 0,
+        scaleY: 0,
+        duration,
+        ease: "Power2",
+        onComplete: () => {
+          this.crosshairSprite?.setVisible(false);
+          this.crosshairTween = null;
+        },
+      });
+    } else {
+      this.crosshairSprite.setVisible(true);
+      this.crosshairTween = this.scene.tweens.add({
+        targets: this.crosshairSprite,
+        scaleX: targetScale,
+        scaleY: targetScale,
+        duration,
+        ease: "Power2",
+        onComplete: () => {
+          this.crosshairTween = null;
+        },
+      });
+    }
+  }
+
   showAimLine(angle: number, _power: number): void {
     // Only show crosshair when the worm is stationary and holding a weapon
     // (not while walking, jumping, or airborne)
@@ -609,9 +644,16 @@ export class WormEntity {
         normalizedAngle = normalizedAngle % (2 * Math.PI);
         const frame = Math.round((normalizedAngle / (2 * Math.PI)) * 32) % 32;
         this.crosshairSprite.setFrame(frame);
-        this.crosshairSprite.setVisible(true);
+        if (
+          !this.crosshairSprite.visible ||
+          this.crosshairSprite.scaleX < 1.0
+        ) {
+          this.scaleCrosshairTo(1.0);
+        }
       } else {
-        this.crosshairSprite.setVisible(false);
+        if (this.crosshairSprite.visible && this.crosshairSprite.scaleX > 0) {
+          this.scaleCrosshairTo(0);
+        }
       }
     }
     // Hide the old graphics line
@@ -651,7 +693,7 @@ export class WormEntity {
     this.aimLine.setVisible(false);
     this.aimLine.clear();
     if (this.crosshairSprite) {
-      this.crosshairSprite.setVisible(false);
+      this.scaleCrosshairTo(0, 100);
     }
   }
 
@@ -1003,6 +1045,7 @@ export class WormEntity {
     this.hpBg.destroy();
     this.aimLine.destroy();
     this.powerGauge.destroy();
+    this.crosshairTween?.stop();
     this.crosshairSprite?.destroy();
     this.hideArrow();
   }

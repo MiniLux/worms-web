@@ -147,6 +147,7 @@ export type GameClientMessage =
   | { type: "USE_TELEPORT"; x: number; y: number }
   | { type: "SKIP_TURN" }
   | { type: "PAUSE_TIMER" }
+  | { type: "APPLY_KNOCKBACK" }
   | { type: "CHAT"; text: string };
 
 // ─── Server → Client Messages ───────────────────────────
