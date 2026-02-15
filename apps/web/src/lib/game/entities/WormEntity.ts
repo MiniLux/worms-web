@@ -139,7 +139,7 @@ export class WormEntity {
       {
         fontSize: "10px",
         fontFamily: "monospace",
-        color: "#ffffff",
+        color: COLOR_HEX[teamColor] ?? "#ffffff",
       },
     );
     this.nameText.setOrigin(0.5, 1);
@@ -712,9 +712,9 @@ export class WormEntity {
   }
 
   /**
-   * Draw a Worms 2-style radial power gauge.
-   * It's a filled arc (pie slice) that sweeps clockwise from the top.
-   * Color goes from green (low) through yellow/orange to red (full).
+   * Draw a Worms 2-style cone power gauge.
+   * A triangular gradient beam emanating from the worm in the aim direction.
+   * Narrow at the worm, wide at the tip. Color: green → yellow → orange → red.
    */
   private drawPowerGauge(): void {
     this.powerGauge.clear();
@@ -722,53 +722,62 @@ export class WormEntity {
 
     const cx = this.x;
     const cy = this.y;
-    const outerR = 18;
-    const innerR = 8;
-    const startAngle = -Math.PI / 2; // 12 o'clock
-    const endAngle = startAngle + this.powerValue * Math.PI * 2;
+    const angle = this.aimAngle;
+    const maxLength = 70;
+    const length = maxLength * this.powerValue;
+    const halfSpread = 0.25; // radians — half-angle of the cone
 
-    // Background ring (dark, semi-transparent)
-    this.powerGauge.lineStyle(outerR - innerR, 0x000000, 0.3);
-    this.powerGauge.beginPath();
-    this.powerGauge.arc(cx, cy, (outerR + innerR) / 2, 0, Math.PI * 2);
-    this.powerGauge.strokePath();
+    // Draw cone as layered segments for gradient effect
+    const segments = 16;
+    const segLen = length / segments;
 
-    // Filled arc segments with gradient coloring
-    const segments = 32;
-    const filledSegments = Math.ceil(this.powerValue * segments);
-    const segAngle = (Math.PI * 2) / segments;
+    for (let i = 0; i < segments; i++) {
+      const t0 = i / segments;
+      const t1 = (i + 1) / segments;
+      const d0 = segLen * i;
+      const d1 = segLen * (i + 1);
 
-    for (let i = 0; i < filledSegments; i++) {
-      const segStart = startAngle + i * segAngle;
-      const segEnd = Math.min(segStart + segAngle, endAngle);
-      if (segStart >= endAngle) break;
+      // Cone width grows with distance
+      const w0 = d0 * Math.tan(halfSpread);
+      const w1 = d1 * Math.tan(halfSpread);
 
-      // Color gradient: green → yellow → orange → red
-      const t = i / segments;
-      const color = this.getPowerColor(t);
+      // Perpendicular direction
+      const px = -Math.sin(angle);
+      const py = Math.cos(angle);
 
-      this.powerGauge.lineStyle(outerR - innerR, color, 0.9);
+      // Four corners of this segment
+      const x0l = cx + Math.cos(angle) * d0 + px * w0;
+      const y0l = cy + Math.sin(angle) * d0 + py * w0;
+      const x0r = cx + Math.cos(angle) * d0 - px * w0;
+      const y0r = cy + Math.sin(angle) * d0 - py * w0;
+      const x1l = cx + Math.cos(angle) * d1 + px * w1;
+      const y1l = cy + Math.sin(angle) * d1 + py * w1;
+      const x1r = cx + Math.cos(angle) * d1 - px * w1;
+      const y1r = cy + Math.sin(angle) * d1 - py * w1;
+
+      // Color gradient along the cone
+      const color = this.getPowerColor(t0);
+      const alpha = 0.7 - t1 * 0.3; // fade out toward tip
+
+      this.powerGauge.fillStyle(color, alpha);
       this.powerGauge.beginPath();
-      this.powerGauge.arc(
-        cx,
-        cy,
-        (outerR + innerR) / 2,
-        segStart,
-        segEnd,
-        false,
-      );
-      this.powerGauge.strokePath();
+      this.powerGauge.moveTo(x0l, y0l);
+      this.powerGauge.lineTo(x1l, y1l);
+      this.powerGauge.lineTo(x1r, y1r);
+      this.powerGauge.lineTo(x0r, y0r);
+      this.powerGauge.closePath();
+      this.powerGauge.fillPath();
     }
   }
 
   private getPowerColor(t: number): number {
-    // green (0) → yellow (0.33) → orange (0.66) → red (1)
+    // green → yellow → orange → red
     let r: number, g: number, b: number;
     if (t < 0.33) {
       const p = t / 0.33;
-      r = Math.round(0x22 + (0xff - 0x22) * p);
-      g = Math.round(0xcc + (0xcc - 0xcc) * p);
-      b = Math.round(0x44 * (1 - p));
+      r = Math.round(0x44 + (0xff - 0x44) * p);
+      g = 0xcc;
+      b = 0x00;
     } else if (t < 0.66) {
       const p = (t - 0.33) / 0.33;
       r = 0xff;

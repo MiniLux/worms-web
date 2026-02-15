@@ -204,8 +204,8 @@ export class HUDScene extends Phaser.Scene {
     this.updatePlayerPanels(state);
 
     // Show turn banner on initial sync
-    const wormName = this.findWormName(state, state.activeWormId);
-    if (wormName) this.showTurnBanner(wormName);
+    const wormInfo = this.findWormInfo(state, state.activeWormId);
+    if (wormInfo) this.showTurnBanner(wormInfo.name, wormInfo.teamColor);
   }
 
   private onTurnStart(msg: {
@@ -227,10 +227,10 @@ export class HUDScene extends Phaser.Scene {
       this.cachedGameState.activeWormId = msg.activeWormId;
       this.cachedGameState.activePlayerId = msg.activePlayerId;
     }
-    const wormName = this.cachedGameState
-      ? this.findWormName(this.cachedGameState, msg.activeWormId)
+    const wormInfo = this.cachedGameState
+      ? this.findWormInfo(this.cachedGameState, msg.activeWormId)
       : null;
-    if (wormName) this.showTurnBanner(wormName);
+    if (wormInfo) this.showTurnBanner(wormInfo.name, wormInfo.teamColor);
 
     // Start countdown
     if (this.timerInterval) clearInterval(this.timerInterval);
@@ -368,16 +368,24 @@ export class HUDScene extends Phaser.Scene {
 
   // ─── Turn Banner ─────────────────────────────────────────
 
-  private showTurnBanner(wormName: string): void {
+  private showTurnBanner(wormName: string, teamColor: string): void {
     this.dismissTurnBanner(true);
 
     const { width } = this.cameras.main;
     const text = `C'est au tour de ${wormName}`;
 
+    const colorHexMap: Record<string, string> = {
+      red: "#ef4444",
+      blue: "#3b82f6",
+      green: "#22c55e",
+      yellow: "#eab308",
+    };
+    const textColor = colorHexMap[teamColor] ?? "#ffffff";
+
     const bannerText = this.add.text(0, 0, text, {
       fontSize: "18px",
       fontFamily: "monospace",
-      color: "#ffffff",
+      color: textColor,
     });
     bannerText.setOrigin(0.5, 0.5);
 
@@ -562,10 +570,14 @@ export class HUDScene extends Phaser.Scene {
     });
   }
 
-  private findWormName(state: GameState, wormId: string): string | null {
+  private findWormInfo(
+    state: GameState,
+    wormId: string,
+  ): { name: string; teamColor: string } | null {
     for (const player of state.players) {
       for (const worm of player.worms) {
-        if (worm.id === wormId) return worm.name;
+        if (worm.id === wormId)
+          return { name: worm.name, teamColor: player.teamColor };
       }
     }
     return null;
