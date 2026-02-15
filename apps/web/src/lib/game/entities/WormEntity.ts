@@ -632,6 +632,8 @@ export class WormEntity {
     const ny = this.nameText.y - nh + pad;
     this.nameBg.fillStyle(0x000000, 0.4);
     this.nameBg.fillRoundedRect(nx, ny, nw, nh, radius);
+    this.nameBg.lineStyle(1, 0xffffff, 0.1);
+    this.nameBg.strokeRoundedRect(nx, ny, nw, nh, radius);
 
     // HP background
     this.hpBg.clear();
@@ -641,6 +643,8 @@ export class WormEntity {
     const hy = this.hpText.y - hh + pad;
     this.hpBg.fillStyle(0x000000, 0.4);
     this.hpBg.fillRoundedRect(hx, hy, hw, hh, radius);
+    this.hpBg.lineStyle(1, 0xffffff, 0.1);
+    this.hpBg.strokeRoundedRect(hx, hy, hw, hh, radius);
   }
 
   hideAimLine(): void {
@@ -740,12 +744,19 @@ export class WormEntity {
   update(): void {
     if (this.isDead) return;
 
-    // Use faster lerp while walking for fluid movement, slower for knockback/settling
-    const lerp = this.isWalking ? 0.5 : 0.2;
+    // Walking: snap directly to server position for fluid movement.
+    // Airborne/knockback: smooth lerp to avoid jerky appearance.
     const curX = this.x;
     const curY = this.y;
-    const newX = curX + (this.targetX - curX) * lerp;
-    const newY = curY + (this.targetY - curY) * lerp;
+    let newX: number, newY: number;
+    if (this.isWalking) {
+      newX = this.targetX;
+      newY = this.targetY;
+    } else {
+      const lerp = 0.2;
+      newX = curX + (this.targetX - curX) * lerp;
+      newY = curY + (this.targetY - curY) * lerp;
+    }
 
     if (this.sprite) {
       this.sprite.x = newX;

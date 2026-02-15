@@ -436,25 +436,20 @@ export class TerrainRenderer {
         }
       }
 
-      // Second pass: filter out crater surfaces — only keep grass where
-      // there's open sky above (no terrain for at least 30px)
-      const MIN_SKY_ABOVE = 30;
+      // Second pass: filter out crater/cave surfaces — only keep grass where
+      // there's unbroken open sky above (no terrain from surface all the way up).
+      // This prevents grass from appearing inside craters or caves.
       for (let x = 0; x < TERRAIN_WIDTH; x++) {
         const sy = surfaceY[x];
         if (sy < 0) continue;
-        // Check if there's terrain above this surface within MIN_SKY_ABOVE pixels
-        let hasTerrrainAbove = false;
-        for (
-          let checkY = Math.max(0, sy - MIN_SKY_ABOVE);
-          checkY < sy;
-          checkY++
-        ) {
+        let hasTerrainAbove = false;
+        for (let checkY = sy - 1; checkY >= 0; checkY--) {
           if (getBitmapPixel(this.bitmap, x, checkY)) {
-            hasTerrrainAbove = true;
+            hasTerrainAbove = true;
             break;
           }
         }
-        if (hasTerrrainAbove) {
+        if (hasTerrainAbove) {
           surfaceY[x] = -1; // Not a true surface, skip grass here
         }
       }
@@ -622,18 +617,14 @@ export class TerrainRenderer {
         }
       }
 
-      // Filter out crater surfaces — only keep grass where there's open sky above
-      const MIN_SKY_ABOVE = 30;
+      // Filter out crater/cave surfaces — only keep grass where there's
+      // unbroken open sky above (no terrain from surface all the way up)
       for (let i = 0; i < maxX - minX; i++) {
         const sy = regionSurfaceY[i];
         if (sy < 0) continue;
         const x = minX + i;
         let hasTerrainAbove = false;
-        for (
-          let checkY = Math.max(0, sy - MIN_SKY_ABOVE);
-          checkY < sy;
-          checkY++
-        ) {
+        for (let checkY = sy - 1; checkY >= 0; checkY--) {
           if (getBitmapPixel(this.bitmap, x, checkY)) {
             hasTerrainAbove = true;
             break;

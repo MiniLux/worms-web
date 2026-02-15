@@ -208,8 +208,8 @@ export class GameScene extends Phaser.Scene {
     this.load.image("terrain_gradient", "/sprites/terrain/gradient.png");
     this.load.image("terrain_back", "/sprites/terrain/back.png");
     this.load.spritesheet("terrain_debris", "/sprites/terrain/debris.png", {
-      frameWidth: 32,
-      frameHeight: 32,
+      frameWidth: 22,
+      frameHeight: 22,
     });
 
     // Weapon icons (single 32x32 images)
@@ -613,15 +613,13 @@ export class GameScene extends Phaser.Scene {
 
       const particle = this.add.sprite(startX, startY, textureKey, 0);
       particle.setDepth(0.5);
-      const scale = useDebris ? 0.6 + Math.random() * 0.3 : 1.2;
+      const scale = useDebris ? 1.0 + Math.random() * 0.5 : 1.2;
       particle.setScale(scale);
-      particle.setAlpha(0.4 + Math.random() * 0.3);
+      particle.setAlpha(0.5 + Math.random() * 0.4);
       if (this.anims.exists(animKey)) {
-        // Start at a random frame and play at a slower speed for subtler motion
         particle.play({
           key: animKey,
           startFrame: Math.floor(Math.random() * totalFrames),
-          frameRate: 15,
         });
       }
       if (this.currentWind < 0) particle.setFlipX(true);

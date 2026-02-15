@@ -15,6 +15,11 @@ export class HUDScene extends Phaser.Scene {
   // Grenade fuse timer display
   private fuseText: Phaser.GameObjects.Text | null = null;
 
+  // Turn announcement banner
+  private turnBanner: Phaser.GameObjects.Container | null = null;
+  private turnBannerTween: Phaser.Tweens.Tween | null = null;
+  private cachedGameState: GameState | null = null;
+
   // Wind display (Worms 2 style bar)
   private windContainer!: Phaser.GameObjects.Container;
   private windBarFill!: Phaser.GameObjects.Rectangle;
@@ -75,6 +80,11 @@ export class HUDScene extends Phaser.Scene {
     this.events.on("timer_sync", this.onTimerSync, this);
     this.events.on("game_over", this.onGameOver, this);
     this.events.on("chat", this.onChat, this);
+
+    // Dismiss turn banner on any key press
+    this.input.keyboard!.on("keydown", () => {
+      this.dismissTurnBanner();
+    });
 
     // Handle window resize
     this.scale.on("resize", (gameSize: Phaser.Structs.Size) => {
@@ -186,11 +196,16 @@ export class HUDScene extends Phaser.Scene {
   // ─── Event Handlers ────────────────────────────────────
 
   private onStateSync(state: GameState): void {
+    this.cachedGameState = state;
     this.timeRemaining = state.turnTimeRemaining;
     this.timerText.setText(String(this.timeRemaining));
     this.updateWind(state.wind);
     this.updateTurnText(state.activePlayerId === this.playerId);
     this.updatePlayerPanels(state);
+
+    // Show turn banner on initial sync
+    const wormName = this.findWormName(state, state.activeWormId);
+    if (wormName) this.showTurnBanner(wormName);
   }
 
   private onTurnStart(msg: {
@@ -206,6 +221,16 @@ export class HUDScene extends Phaser.Scene {
 
     const isMyTurn = msg.activePlayerId === this.playerId;
     this.updateTurnText(isMyTurn);
+
+    // Show turn banner with active worm name
+    if (this.cachedGameState) {
+      this.cachedGameState.activeWormId = msg.activeWormId;
+      this.cachedGameState.activePlayerId = msg.activePlayerId;
+    }
+    const wormName = this.cachedGameState
+      ? this.findWormName(this.cachedGameState, msg.activeWormId)
+      : null;
+    if (wormName) this.showTurnBanner(wormName);
 
     // Start countdown
     if (this.timerInterval) clearInterval(this.timerInterval);
@@ -338,6 +363,67 @@ export class HUDScene extends Phaser.Scene {
       delay: 3000,
       duration: 1000,
       onComplete: () => chatText.destroy(),
+    });
+  }
+
+  // ─── Turn Banner ─────────────────────────────────────────
+
+  private showTurnBanner(wormName: string): void {
+    this.dismissTurnBanner(true);
+
+    const { width } = this.cameras.main;
+    const text = `C'est au tour de ${wormName}`;
+
+    const bannerText = this.add.text(0, 0, text, {
+      fontSize: "18px",
+      fontFamily: "monospace",
+      color: "#ffffff",
+    });
+    bannerText.setOrigin(0.5, 0.5);
+
+    const pad = 12;
+    const radius = 6;
+    const bw = bannerText.width + pad * 2;
+    const bh = bannerText.height + pad * 2;
+
+    const bg = this.add.graphics();
+    bg.fillStyle(0x000000, 0.4);
+    bg.fillRoundedRect(-bw / 2, -bh / 2, bw, bh, radius);
+    bg.lineStyle(1, 0xffffff, 0.1);
+    bg.strokeRoundedRect(-bw / 2, -bh / 2, bw, bh, radius);
+
+    this.turnBanner = this.add.container(width / 2, -40);
+    this.turnBanner.add([bg, bannerText]);
+    this.turnBanner.setDepth(30);
+
+    // Slide in from top
+    this.turnBannerTween = this.tweens.add({
+      targets: this.turnBanner,
+      y: 40,
+      duration: 400,
+      ease: "Back.easeOut",
+    });
+  }
+
+  private dismissTurnBanner(immediate?: boolean): void {
+    if (!this.turnBanner) return;
+    if (this.turnBannerTween) {
+      this.turnBannerTween.stop();
+      this.turnBannerTween = null;
+    }
+    const banner = this.turnBanner;
+    this.turnBanner = null;
+    if (immediate) {
+      banner.destroy();
+      return;
+    }
+    // Slide out upward
+    this.tweens.add({
+      targets: banner,
+      y: -60,
+      duration: 300,
+      ease: "Back.easeIn",
+      onComplete: () => banner.destroy(),
     });
   }
 
@@ -474,6 +560,15 @@ export class HUDScene extends Phaser.Scene {
       container.setDepth(20);
       this.playerPanels.push(container);
     });
+  }
+
+  private findWormName(state: GameState, wormId: string): string | null {
+    for (const player of state.players) {
+      for (const worm of player.worms) {
+        if (worm.id === wormId) return worm.name;
+      }
+    }
+    return null;
   }
 
   private getTeamHex(color: string): number {

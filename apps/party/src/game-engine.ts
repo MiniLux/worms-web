@@ -384,12 +384,14 @@ export function processFire(
           def.knockbackMultiplier,
         );
         if (kb.damage > 0) {
-          // Store pending knockback — applied after flight time
+          // Store pending knockback — applied after flight time + network buffer.
+          // The client starts the projectile animation only after receiving
+          // FIRE_RESULT over the network, so add 200ms to compensate.
           w.pendingKnockback = {
             vx: kb.vx,
             vy: kb.vy,
             damage: kb.damage,
-            delayMs: flightDelayMs,
+            delayMs: flightDelayMs + 200,
           };
           damages.push({
             wormId: w.id,
