@@ -253,11 +253,10 @@ export default class GameServer implements Party.Server {
           }
         }
 
-        // Count down pending knockback (deferred from projectile impact)
-        // NOTE: damage visuals are handled client-side in applyFireEffects
-        // after the projectile animation completes. The server only applies
-        // the health change and knockback velocity here — no WORM_DAMAGE
-        // broadcast, which would arrive before the animation finishes.
+        // Worms with pendingKnockback are "frozen" — skip physics entirely.
+        // The client will send APPLY_KNOCKBACK after the projectile animation
+        // finishes, which triggers immediate application. The timer here is
+        // only a safety net in case the message is lost.
         if (worm.pendingKnockback) {
           worm.pendingKnockback.delayMs -= dt * 1000;
           if (worm.pendingKnockback.delayMs <= 0) {
@@ -274,6 +273,10 @@ export default class GameServer implements Party.Server {
               });
             }
             worm.pendingKnockback = undefined;
+          } else {
+            // Still waiting — freeze this worm in place (don't simulate gravity
+            // or movement even if terrain was destroyed underneath)
+            continue;
           }
         }
 
@@ -291,7 +294,7 @@ export default class GameServer implements Party.Server {
 
         // Check if worm needs physics processing
         const hasVelocity = Math.abs(worm.vx) >= 1 || Math.abs(worm.vy) >= 1;
-        const hasPending = !!worm.pendingJump || !!worm.pendingKnockback;
+        const hasPending = !!worm.pendingJump;
         if (!isWalking && !hasVelocity && !hasPending) continue;
 
         if (hasVelocity) anySettling = true;

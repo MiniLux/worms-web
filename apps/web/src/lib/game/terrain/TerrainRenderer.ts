@@ -454,17 +454,21 @@ export class TerrainRenderer {
         }
       }
 
-      // Third pass: reject grass on steep slopes (slope > 2px per column)
-      const MAX_SLOPE = 2;
+      // Third pass: reject grass on slopes — check over a wider window
+      // to catch gradual slopes that still look stretched
+      const SLOPE_WINDOW = 4; // check 4 pixels in each direction
+      const MAX_TOTAL_SLOPE = 4; // max height change over the window
       for (let x = 0; x < TERRAIN_WIDTH; x++) {
         if (surfaceY[x] < 0) continue;
-        // Check slope using neighbors
-        const left = x > 0 ? surfaceY[x - 1] : -1;
-        const right = x < TERRAIN_WIDTH - 1 ? surfaceY[x + 1] : -1;
         let steep = false;
-        if (left >= 0 && Math.abs(surfaceY[x] - left) > MAX_SLOPE) steep = true;
-        if (right >= 0 && Math.abs(surfaceY[x] - right) > MAX_SLOPE)
-          steep = true;
+        for (let d = 1; d <= SLOPE_WINDOW && !steep; d++) {
+          const left = x - d >= 0 ? surfaceY[x - d] : -1;
+          const right = x + d < TERRAIN_WIDTH ? surfaceY[x + d] : -1;
+          if (left >= 0 && Math.abs(surfaceY[x] - left) > MAX_TOTAL_SLOPE)
+            steep = true;
+          if (right >= 0 && Math.abs(surfaceY[x] - right) > MAX_TOTAL_SLOPE)
+            steep = true;
+        }
         if (steep) surfaceY[x] = -1;
       }
 
@@ -649,28 +653,30 @@ export class TerrainRenderer {
         }
       }
 
-      // Reject grass on steep slopes (slope > 2px per column)
-      const MAX_SLOPE = 2;
+      // Reject grass on slopes — check over a wider window
+      const SLOPE_WINDOW = 4;
+      const MAX_TOTAL_SLOPE = 4;
+      const getNeighborSurface = (col: number): number => {
+        const ni = col - minX;
+        if (ni >= 0 && ni < maxX - minX) return regionSurfaceY[ni];
+        if (col < 0 || col >= TERRAIN_WIDTH) return -1;
+        for (let y = 0; y < TERRAIN_HEIGHT; y++) {
+          if (getBitmapPixel(this.bitmap, col, y)) return y;
+        }
+        return -1;
+      };
       for (let i = 0; i < maxX - minX; i++) {
         if (regionSurfaceY[i] < 0) continue;
         const sy = regionSurfaceY[i];
-        // Get neighbor surface Y (may be outside region, so scan bitmap)
-        const getNeighborSurface = (col: number): number => {
-          const ni = col - minX;
-          if (ni >= 0 && ni < maxX - minX) return regionSurfaceY[ni];
-          // Outside region: scan bitmap for surface
-          if (col < 0 || col >= TERRAIN_WIDTH) return -1;
-          for (let y = 0; y < TERRAIN_HEIGHT; y++) {
-            if (getBitmapPixel(this.bitmap, col, y)) return y;
-          }
-          return -1;
-        };
         const x = minX + i;
-        const left = getNeighborSurface(x - 1);
-        const right = getNeighborSurface(x + 1);
         let steep = false;
-        if (left >= 0 && Math.abs(sy - left) > MAX_SLOPE) steep = true;
-        if (right >= 0 && Math.abs(sy - right) > MAX_SLOPE) steep = true;
+        for (let d = 1; d <= SLOPE_WINDOW && !steep; d++) {
+          const left = getNeighborSurface(x - d);
+          const right = getNeighborSurface(x + d);
+          if (left >= 0 && Math.abs(sy - left) > MAX_TOTAL_SLOPE) steep = true;
+          if (right >= 0 && Math.abs(sy - right) > MAX_TOTAL_SLOPE)
+            steep = true;
+        }
         if (steep) regionSurfaceY[i] = -1;
       }
 

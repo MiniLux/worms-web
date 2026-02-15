@@ -20,36 +20,54 @@ function mulberry32(seed: number): () => number {
   };
 }
 
-// ─── Hash-based noise functions ─────────────────────────
+// ─── High-quality hash & gradient noise ─────────────────
 
-/** Hash an integer seed to [0,1] */
-function hashFloat(n: number): number {
-  let x = ((n * 1103515245 + 12345) & 0x7fffffff) >>> 0;
-  x = ((x * 1103515245 + 12345) & 0x7fffffff) >>> 0;
-  return (x & 0xfffff) / 0xfffff;
+/** High-quality integer hash (xxhash-inspired), returns [0, 0xFFFFFFFF] */
+function hash1(n: number): number {
+  n = Math.imul(n ^ (n >>> 16), 0x45d9f3b);
+  n = Math.imul(n ^ (n >>> 16), 0x45d9f3b);
+  return (n ^ (n >>> 16)) >>> 0;
 }
 
-/** Hash two integers (seed + 2D coords) to [0,1] */
-function hashFloat2D(seed: number, ix: number, iy: number): number {
-  let n = seed * 374761393 + ix * 1103515245 + iy * 12345;
-  n = ((n * 1103515245 + 12345) & 0x7fffffff) >>> 0;
-  n = ((n * 1103515245 + 12345) & 0x7fffffff) >>> 0;
-  return (n & 0xfffff) / 0xfffff;
+/** Hash two ints to [0, 0xFFFFFFFF] */
+function hash2(a: number, b: number): number {
+  let h = a | 0;
+  h = Math.imul(h ^ (h >>> 16), 0x85ebca6b);
+  h = (h + Math.imul(b | 0, 0xcc9e2d51)) | 0;
+  h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35);
+  return (h ^ (h >>> 16)) >>> 0;
 }
 
-/** 1D interpolated noise: seed-based, returns [-1, 1] */
-function hashNoise(seed: number, x: number, frequency: number): number {
+/** Hash three ints to [0, 0xFFFFFFFF] */
+function hash3(a: number, b: number, c: number): number {
+  return hash2(hash2(a, b), c);
+}
+
+/** Quintic smoothstep (6t^5 - 15t^4 + 10t^3) for smooth derivatives */
+function fade(t: number): number {
+  return t * t * t * (t * (t * 6 - 15) + 10);
+}
+
+/** 1D gradient noise: returns [-1, 1] */
+function gradNoise1D(seed: number, x: number, frequency: number): number {
   const fx = x * frequency;
   const ix = Math.floor(fx);
   const frac = fx - ix;
-  const a = hashFloat(seed * 7919 + ix);
-  const b = hashFloat(seed * 7919 + ix + 1);
-  const t = (1 - Math.cos(frac * Math.PI)) / 2;
-  return (a * (1 - t) + b * t) * 2 - 1;
+
+  // Random gradients at integer positions (either +1 or -1, but with variation)
+  const g0 = (hash1(seed + ix * 6971) / 0xffffffff) * 2 - 1;
+  const g1 = (hash1(seed + (ix + 1) * 6971) / 0xffffffff) * 2 - 1;
+
+  // Dot product of gradient and distance
+  const d0 = g0 * frac;
+  const d1 = g1 * (frac - 1);
+
+  const t = fade(frac);
+  return d0 + t * (d1 - d0);
 }
 
-/** 2D interpolated noise: seed-based, returns [-1, 1] */
-function hashNoise2D(
+/** 2D gradient noise (Perlin-style): returns approx [-0.7, 0.7] */
+function gradNoise2D(
   seed: number,
   x: number,
   y: number,
@@ -62,20 +80,57 @@ function hashNoise2D(
   const fracX = fx - ix;
   const fracY = fy - iy;
 
-  const v00 = hashFloat2D(seed, ix, iy);
-  const v10 = hashFloat2D(seed, ix + 1, iy);
-  const v01 = hashFloat2D(seed, ix, iy + 1);
-  const v11 = hashFloat2D(seed, ix + 1, iy + 1);
+  // 2D gradient vectors from hash (8 directions)
+  const grad = (hx: number, hy: number, dx: number, dy: number): number => {
+    const h = hash3(seed, hx, hy) & 7;
+    const GRADS = [
+      [1, 0],
+      [-1, 0],
+      [0, 1],
+      [0, -1],
+      [1, 1],
+      [-1, 1],
+      [1, -1],
+      [-1, -1],
+    ];
+    const g = GRADS[h];
+    return g[0] * dx + g[1] * dy;
+  };
 
-  const tx = (1 - Math.cos(fracX * Math.PI)) / 2;
-  const ty = (1 - Math.cos(fracY * Math.PI)) / 2;
+  const n00 = grad(ix, iy, fracX, fracY);
+  const n10 = grad(ix + 1, iy, fracX - 1, fracY);
+  const n01 = grad(ix, iy + 1, fracX, fracY - 1);
+  const n11 = grad(ix + 1, iy + 1, fracX - 1, fracY - 1);
 
-  const top = v00 * (1 - tx) + v10 * tx;
-  const bot = v01 * (1 - tx) + v11 * tx;
-  return (top * (1 - ty) + bot * ty) * 2 - 1;
+  const u = fade(fracX);
+  const v = fade(fracY);
+
+  const nx0 = n00 + u * (n10 - n00);
+  const nx1 = n01 + u * (n11 - n01);
+  return nx0 + v * (nx1 - nx0);
 }
 
-/** Fractal Brownian motion (2D) — layered noise octaves */
+/** Fractal Brownian motion (1D) */
+function fbm1D(
+  seed: number,
+  x: number,
+  octaves: number,
+  baseFreq: number,
+): number {
+  let value = 0;
+  let freq = baseFreq;
+  let amp = 1;
+  let maxAmp = 0;
+  for (let o = 0; o < octaves; o++) {
+    value += gradNoise1D(seed + o * 7919, x, freq) * amp;
+    maxAmp += amp;
+    freq *= 2.17; // non-integer ratio avoids repeating patterns
+    amp *= 0.48;
+  }
+  return value / maxAmp;
+}
+
+/** Fractal Brownian motion (2D) */
 function fbm2D(
   seed: number,
   x: number,
@@ -88,9 +143,9 @@ function fbm2D(
   let amp = 1;
   let maxAmp = 0;
   for (let o = 0; o < octaves; o++) {
-    value += hashNoise2D(seed + o * 3571, x, y, freq) * amp;
+    value += gradNoise2D(seed + o * 3571, x, y, freq) * amp;
     maxAmp += amp;
-    freq *= 2;
+    freq *= 2.13;
     amp *= 0.5;
   }
   return value / maxAmp;
@@ -136,13 +191,8 @@ export function generateTerrain(
   for (let x = 0; x < TERRAIN_WIDTH; x++) {
     const nx = x / TERRAIN_WIDTH; // normalized [0,1]
 
-    // 5-octave noise for rich, dramatic terrain
-    let h = 0;
-    h += hashNoise(seed, x, 0.002) * 0.45; // massive rolling hills
-    h += hashNoise(seed + 1000, x, 0.005) * 0.25; // large features
-    h += hashNoise(seed + 2000, x, 0.015) * 0.15; // medium bumps
-    h += hashNoise(seed + 3000, x, 0.04) * 0.1; // small detail
-    h += hashNoise(seed + 4000, x, 0.1) * 0.05; // fine grit
+    // Organic fbm noise for natural terrain profile
+    const h = fbm1D(seed, x, 6, 0.002);
 
     // Edge fade — terrain tapers off at edges creating an island shape
     const edgeFade = Math.min(1, nx * 6, (1 - nx) * 6); // sharp taper within ~17% of edges
