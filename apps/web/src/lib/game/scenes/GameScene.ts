@@ -92,8 +92,9 @@ export class GameScene extends Phaser.Scene {
       worm_japbak: { file: "wjapbak.png" },
       worm_fist: { file: "wfist.png" },
       worm_firblast: { file: "wfirbl1.png" },
-      // Shotgun draw (pick-up) animation
-      worm_shotp: { file: "wshotp.png" },
+      // Shotgun draw and put-away animations
+      worm_shglnk: { file: "wshglnk.png" },
+      worm_shgbak: { file: "wshgbak.png" },
       // Grenade throw with visible grenade
       worm_thrgrn: { file: "wthrgrn.png" },
       // Grenade draw (get out) and put-away
@@ -207,8 +208,8 @@ export class GameScene extends Phaser.Scene {
     this.load.image("terrain_gradient", "/sprites/terrain/gradient.png");
     this.load.image("terrain_back", "/sprites/terrain/back.png");
     this.load.spritesheet("terrain_debris", "/sprites/terrain/debris.png", {
-      frameWidth: 22,
-      frameHeight: 22,
+      frameWidth: 32,
+      frameHeight: 32,
     });
 
     // Weapon icons (single 32x32 images)
@@ -429,6 +430,8 @@ export class GameScene extends Phaser.Scene {
       this.currentPower = 0;
       this.events.emit("charge_start");
       this.events.emit("power_update", 0);
+      // Pause the turn timer while charging (like original Worms 2)
+      this.sendMessage({ type: "PAUSE_TIMER" });
     });
 
     this.input.keyboard!.on("keyup-SPACE", () => {
@@ -610,7 +613,7 @@ export class GameScene extends Phaser.Scene {
 
       const particle = this.add.sprite(startX, startY, textureKey, 0);
       particle.setDepth(0.5);
-      const scale = useDebris ? 1.5 + Math.random() * 1.0 : 1.2;
+      const scale = useDebris ? 1.0 + Math.random() * 0.5 : 1.2;
       particle.setScale(scale);
       particle.setAlpha(0.5 + Math.random() * 0.4);
       if (this.anims.exists(animKey)) {

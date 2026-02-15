@@ -36,7 +36,7 @@ const WEAPON_AIM_SPRITES: Record<string, string> = {
 /** Weapon "draw/get" animation played when worm stops walking and has a weapon */
 const WEAPON_DRAW_SPRITES: Record<string, { texture: string; frames: number }> =
   {
-    shotgun: { texture: "worm_shotp", frames: 32 },
+    shotgun: { texture: "worm_shglnk", frames: 10 },
     bazooka: { texture: "worm_bazlnk", frames: 7 },
     grenade: { texture: "worm_grnlnk", frames: 10 },
     teleport: { texture: "worm_tellnk", frames: 10 },
@@ -54,7 +54,7 @@ const WEAPON_PUTAWAY_SPRITES: Record<
   string,
   { texture: string; frames: number; reverse: boolean }
 > = {
-  shotgun: { texture: "worm_shotp", frames: 32, reverse: true },
+  shotgun: { texture: "worm_shgbak", frames: 10, reverse: false },
   bazooka: { texture: "worm_bazlnk", frames: 7, reverse: true },
   grenade: { texture: "worm_grnbak", frames: 10, reverse: false },
   teleport: { texture: "worm_telbak", frames: 10, reverse: false },
@@ -87,6 +87,8 @@ export class WormEntity {
   private crosshairSprite: Phaser.GameObjects.Sprite | null = null;
   private arrowSprite: Phaser.GameObjects.Sprite | null = null;
   private labelsHidden: boolean = false;
+  private nameBg: Phaser.GameObjects.Graphics;
+  private hpBg: Phaser.GameObjects.Graphics;
 
   constructor(
     private scene: Phaser.Scene,
@@ -123,6 +125,12 @@ export class WormEntity {
       this.fallbackBody.setDepth(3);
     }
 
+    // Black rounded backgrounds for name and HP
+    this.nameBg = scene.add.graphics();
+    this.nameBg.setDepth(3.5);
+    this.hpBg = scene.add.graphics();
+    this.hpBg.setDepth(3.5);
+
     this.nameText = scene.add.text(
       initialState.x,
       initialState.y - 30,
@@ -131,8 +139,6 @@ export class WormEntity {
         fontSize: "10px",
         fontFamily: "monospace",
         color: "#ffffff",
-        stroke: "#000000",
-        strokeThickness: 2,
       },
     );
     this.nameText.setOrigin(0.5, 1);
@@ -146,12 +152,12 @@ export class WormEntity {
         fontSize: "10px",
         fontFamily: "monospace",
         color: COLOR_HEX[teamColor] ?? "#ffffff",
-        stroke: "#000000",
-        strokeThickness: 2,
       },
     );
     this.hpText.setOrigin(0.5, 1);
     this.hpText.setDepth(4);
+
+    this.drawLabelBackgrounds();
 
     this.aimLine = scene.add.graphics();
     this.aimLine.setDepth(5);
@@ -305,6 +311,9 @@ export class WormEntity {
 
     if (newState.health !== undefined) {
       this.hpText.setText(String(this.state.health));
+      if (!this.labelsHidden && !this.isDead) {
+        this.drawLabelBackgrounds();
+      }
     }
     if (newState.isAlive === false && !this.isDead) {
       this.die();
@@ -347,6 +356,8 @@ export class WormEntity {
       this.labelsHidden = true;
       this.nameText.setVisible(false);
       this.hpText.setVisible(false);
+      this.nameBg.setVisible(false);
+      this.hpBg.setVisible(false);
       // Show bouncing arrow above head
       this.showArrow();
     } else {
@@ -355,6 +366,9 @@ export class WormEntity {
       if (!this.isDead) {
         this.nameText.setVisible(true);
         this.hpText.setVisible(true);
+        this.nameBg.setVisible(true);
+        this.hpBg.setVisible(true);
+        this.drawLabelBackgrounds();
       }
       this.hideArrow();
       this.hideAimLine();
@@ -589,8 +603,8 @@ export class WormEntity {
           this.x + Math.cos(angle) * distance,
           this.y + Math.sin(angle) * distance,
         );
-        // Pick frame based on aim angle (32 frames, frame 0 = up, clockwise)
-        let normalizedAngle = angle + Math.PI / 2; // offset so 0 = up
+        // Pick frame based on aim angle + 45deg offset (32 frames, frame 0 = up, clockwise)
+        let normalizedAngle = angle + Math.PI / 2 + Math.PI / 4; // offset so 0 = up, +45deg rotation
         if (normalizedAngle < 0) normalizedAngle += 2 * Math.PI;
         normalizedAngle = normalizedAngle % (2 * Math.PI);
         const frame = Math.round((normalizedAngle / (2 * Math.PI)) * 32) % 32;
@@ -603,6 +617,30 @@ export class WormEntity {
     // Hide the old graphics line
     this.aimLine.setVisible(false);
     this.aimLine.clear();
+  }
+
+  /** Draw rounded black backgrounds behind name and HP labels */
+  private drawLabelBackgrounds(): void {
+    const pad = 3;
+    const radius = 4;
+
+    // Name background
+    this.nameBg.clear();
+    const nw = this.nameText.width + pad * 2;
+    const nh = this.nameText.height + pad * 2;
+    const nx = this.nameText.x - nw / 2;
+    const ny = this.nameText.y - nh + pad;
+    this.nameBg.fillStyle(0x000000, 0.7);
+    this.nameBg.fillRoundedRect(nx, ny, nw, nh, radius);
+
+    // HP background
+    this.hpBg.clear();
+    const hw = this.hpText.width + pad * 2;
+    const hh = this.hpText.height + pad * 2;
+    const hx = this.hpText.x - hw / 2;
+    const hy = this.hpText.y - hh + pad;
+    this.hpBg.fillStyle(0x000000, 0.7);
+    this.hpBg.fillRoundedRect(hx, hy, hw, hh, radius);
   }
 
   hideAimLine(): void {
@@ -718,6 +756,9 @@ export class WormEntity {
 
     this.nameText.setPosition(newX, newY - 30);
     this.hpText.setPosition(newX, newY - 19);
+    if (!this.labelsHidden && !this.isDead) {
+      this.drawLabelBackgrounds();
+    }
     if (this.arrowSprite) {
       this.arrowSprite.setPosition(newX, newY - 50);
     }
@@ -903,6 +944,8 @@ export class WormEntity {
 
     this.nameText.setVisible(false);
     this.hpText.setVisible(false);
+    this.nameBg.setVisible(false);
+    this.hpBg.setVisible(false);
     this.hideArrow();
     this.hideAimLine();
   }
@@ -944,6 +987,8 @@ export class WormEntity {
     this.fallbackBody?.destroy();
     this.nameText.destroy();
     this.hpText.destroy();
+    this.nameBg.destroy();
+    this.hpBg.destroy();
     this.aimLine.destroy();
     this.powerGauge.destroy();
     this.crosshairSprite?.destroy();

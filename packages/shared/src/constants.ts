@@ -11,7 +11,7 @@ export const MAX_TRAJECTORY_STEPS = 600; // 10 seconds max flight time
 // Worm
 export const WORM_WIDTH = 24;
 export const WORM_HEIGHT = 24;
-export const WORM_WALK_SPEED = 45; // px/s
+export const WORM_WALK_SPEED = 30; // px/s
 export const WORM_JUMP_VX = 80;
 export const WORM_JUMP_VY = -180;
 export const WORM_BACKFLIP_VX = -40;

@@ -5,11 +5,7 @@ export type WeaponId =
   | "fire_punch"
   | "teleport";
 
-export type WeaponType =
-  | "projectile"
-  | "hitscan"
-  | "melee"
-  | "utility";
+export type WeaponType = "projectile" | "hitscan" | "melee" | "utility";
 
 export interface WeaponDefinition {
   id: WeaponId;
@@ -35,7 +31,7 @@ export const WEAPON_DEFINITIONS: Record<WeaponId, WeaponDefinition> = {
     name: "Bazooka",
     type: "projectile",
     damage: 50,
-    explosionRadius: 40,
+    explosionRadius: 55,
     ammo: -1,
     affectedByWind: true,
     fuseTime: 0,
@@ -48,7 +44,7 @@ export const WEAPON_DEFINITIONS: Record<WeaponId, WeaponDefinition> = {
     name: "Grenade",
     type: "projectile",
     damage: 50,
-    explosionRadius: 40,
+    explosionRadius: 55,
     ammo: -1,
     affectedByWind: true,
     fuseTime: 3000,

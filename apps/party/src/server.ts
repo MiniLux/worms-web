@@ -150,6 +150,9 @@ export default class GameServer implements Party.Server {
       case "SKIP_TURN":
         this.handleSkipTurn(sender);
         break;
+      case "PAUSE_TIMER":
+        this.handlePauseTimer(sender);
+        break;
       case "CHAT":
         this.handleChat(msg.text, sender);
         break;
@@ -672,6 +675,13 @@ export default class GameServer implements Party.Server {
     // Worm has a small vy so physics loop will drop it to the ground,
     // then enter retreat once it settles
     this.waitingForPhysicsSettle = true;
+  }
+
+  private handlePauseTimer(conn: Party.Connection): void {
+    if (!this.isActivePlayer(conn) || !this.state) return;
+    if (this.state.phase !== "playing") return;
+    // Cancel the turn timer alarm — player is charging a shot
+    this.room.storage.deleteAlarm();
   }
 
   private handleSkipTurn(conn: Party.Connection): void {

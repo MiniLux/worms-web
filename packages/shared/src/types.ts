@@ -144,6 +144,7 @@ export type GameClientMessage =
   | { type: "FIRE_MELEE"; weaponId: WeaponId; direction: "left" | "right" }
   | { type: "USE_TELEPORT"; x: number; y: number }
   | { type: "SKIP_TURN" }
+  | { type: "PAUSE_TIMER" }
   | { type: "CHAT"; text: string };
 
 // ─── Server → Client Messages ───────────────────────────
