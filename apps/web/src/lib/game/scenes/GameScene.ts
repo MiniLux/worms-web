@@ -512,22 +512,23 @@ export class GameScene extends Phaser.Scene {
     const totalFrames = useDebris ? 122 : 74;
 
     const count = Math.min(
-      8,
-      Math.max(3, Math.floor(Math.abs(this.currentWind) / 15)),
+      25,
+      Math.max(8, Math.floor(Math.abs(this.currentWind) / 5)),
     );
     const camBounds = this.cameras.main.worldView;
 
     for (let i = 0; i < count; i++) {
       const startX =
         this.currentWind > 0
-          ? camBounds.left - 60 - Math.random() * 200
-          : camBounds.right + 60 + Math.random() * 200;
+          ? camBounds.left - 60 - Math.random() * 400
+          : camBounds.right + 60 + Math.random() * 400;
       const startY = camBounds.top + Math.random() * camBounds.height;
 
       const particle = this.add.sprite(startX, startY, textureKey, 0);
       particle.setDepth(0.5);
-      particle.setScale(useDebris ? 1.0 : 0.7);
-      particle.setAlpha(0.7);
+      const scale = useDebris ? 1.5 + Math.random() * 1.0 : 1.2;
+      particle.setScale(scale);
+      particle.setAlpha(0.5 + Math.random() * 0.4);
       if (this.anims.exists(animKey)) {
         particle.play({
           key: animKey,

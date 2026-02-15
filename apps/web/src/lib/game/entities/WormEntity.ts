@@ -434,6 +434,8 @@ export class WormEntity {
     if (!this.scene.anims.exists(animKey)) return;
     this.jumpAnimPlaying = true;
     this.isJumping = true;
+    this.isWalking = false;
+    this.walkingExplicit = false;
     this.isShowingWeaponFrame = false;
     this.currentAnim = "";
 
