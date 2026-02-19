@@ -346,7 +346,7 @@ export class TerrainRenderer {
   /** Update background parallax based on camera scroll position */
   updateParallax(camScrollX: number): void {
     if (this.backImage) {
-      this.backImage.tilePositionX = camScrollX * 0.3;
+      this.backImage.tilePositionX = camScrollX * -0.05;
     }
   }
 
