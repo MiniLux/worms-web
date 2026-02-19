@@ -86,18 +86,31 @@ export async function setupDiscordSdk(): Promise<{
   // Patch global fetch/WebSocket/XHR so they route through Discord's proxy
   const partyKitHost = "worms-party.minilux.partykit.dev";
 
-  patchUrlMappings(
-    [
-      {
-        prefix: "/partykit",
-        target: `https://${partyKitHost}`,
-      },
-    ],
+  const mappings = [
     {
-      patchFetch: true,
-      patchWebSocket: true,
-      patchXhr: true,
+      prefix: "/partykit",
+      target: partyKitHost,
     },
+  ];
+
+  console.log("[Discord] Patching URL mappings:", mappings);
+  console.log(
+    "[Discord] Current location:",
+    window.location.host,
+    window.location.origin,
+  );
+
+  patchUrlMappings(mappings, {
+    patchFetch: true,
+    patchWebSocket: true,
+    patchXhr: true,
+  });
+
+  // Verify patch worked
+  console.log(
+    "[Discord] WebSocket patched:",
+    window.WebSocket.toString().includes("attemptRemap") ||
+      window.WebSocket.toString().includes("remapped"),
   );
 
   return {
