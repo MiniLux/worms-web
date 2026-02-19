@@ -167,7 +167,7 @@ export class WormEntity {
     this.aimLine.setDepth(5);
     this.aimLine.setVisible(false);
 
-    // Crosshair sprite (static, team colored — positioned along aim direction)
+    // Crosshair sprite (animated spin, team colored — positioned along aim direction)
     const crosshairKey =
       teamColor === "blue" ? "crosshair_blue" : "crosshair_red";
     if (hasSpritesheet(scene, crosshairKey)) {
@@ -175,6 +175,20 @@ export class WormEntity {
       this.crosshairSprite.setDepth(7);
       this.crosshairSprite.setScale(1.0);
       this.crosshairSprite.setVisible(false);
+
+      // Create looping spin animation for the crosshair
+      const crosshairAnimKey = "anim_" + crosshairKey;
+      if (!scene.anims.exists(crosshairAnimKey)) {
+        scene.anims.create({
+          key: crosshairAnimKey,
+          frames: scene.anims.generateFrameNumbers(crosshairKey, {
+            start: 0,
+            end: 31,
+          }),
+          frameRate: 15,
+          repeat: -1,
+        });
+      }
     }
 
     this.powerGauge = scene.add.graphics();
@@ -641,12 +655,16 @@ export class WormEntity {
           this.x + Math.cos(angle) * distance,
           this.y + Math.sin(angle) * distance,
         );
-        // Pick frame based on aim angle (32 frames, frame 0 = up, clockwise)
-        let normalizedAngle = angle + Math.PI / 2; // offset so 0 = up
-        if (normalizedAngle < 0) normalizedAngle += 2 * Math.PI;
-        normalizedAngle = normalizedAngle % (2 * Math.PI);
-        const frame = Math.round((normalizedAngle / (2 * Math.PI)) * 32) % 32;
-        this.crosshairSprite.setFrame(frame);
+        // Play looping spin animation
+        const crosshairKey =
+          this.teamColor === "blue" ? "crosshair_blue" : "crosshair_red";
+        const crosshairAnimKey = "anim_" + crosshairKey;
+        if (
+          this.scene.anims.exists(crosshairAnimKey) &&
+          this.crosshairSprite.anims.currentAnim?.key !== crosshairAnimKey
+        ) {
+          this.crosshairSprite.play(crosshairAnimKey);
+        }
         if (
           !this.crosshairSprite.visible ||
           this.crosshairSprite.scaleX < 1.0
@@ -760,9 +778,8 @@ export class WormEntity {
 
       // Color gradient along the cone
       const color = this.getPowerColor(t0);
-      const alpha = 0.7 - t1 * 0.3; // fade out toward tip
 
-      this.powerGauge.fillStyle(color, alpha);
+      this.powerGauge.fillStyle(color, 1);
       this.powerGauge.beginPath();
       this.powerGauge.moveTo(x0l, y0l);
       this.powerGauge.lineTo(x1l, y1l);
@@ -778,8 +795,7 @@ export class WormEntity {
       const tipY = cy + Math.sin(angle) * length;
       const tipRadius = length * Math.tan(halfSpread);
       const capColor = this.getPowerColor(1);
-      const capAlpha = 0.7 - 1 * 0.3;
-      this.powerGauge.fillStyle(capColor, capAlpha);
+      this.powerGauge.fillStyle(capColor, 1);
       this.powerGauge.fillCircle(tipX, tipY, tipRadius);
     }
   }
