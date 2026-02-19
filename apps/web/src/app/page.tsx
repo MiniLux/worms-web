@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import Image from "next/image";
 import { LoginButton } from "@/components/LoginButton";
+import { DiscordActivityGate } from "@/components/DiscordActivityGate";
 
 export default async function Home() {
   try {
@@ -18,15 +19,17 @@ export default async function Home() {
   }
 
   return (
-    <main className="min-h-screen flex flex-col items-center justify-center gap-8 p-8">
-      <Image
-        src="/logo.png"
-        alt="Worms: Le Parking"
-        width={600}
-        height={186}
-        priority
-      />
-      <LoginButton />
-    </main>
+    <DiscordActivityGate>
+      <main className="min-h-screen flex flex-col items-center justify-center gap-8 p-8">
+        <Image
+          src="/logo.png"
+          alt="Worms: Le Parking"
+          width={600}
+          height={186}
+          priority
+        />
+        <LoginButton />
+      </main>
+    </DiscordActivityGate>
   );
 }
