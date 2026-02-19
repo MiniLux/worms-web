@@ -145,7 +145,7 @@ export function simulateBallistic(
   let x = startX;
   let y = startY;
   const dt = PHYSICS_STEP_MS / 1000;
-  const windForce = affectedByWind ? wind * 1.0 : 0;
+  const windForce = affectedByWind ? wind * 2.5 : 0;
 
   const trajectory: TrajectoryPoint[] = [{ x, y, t: 0 }];
 
