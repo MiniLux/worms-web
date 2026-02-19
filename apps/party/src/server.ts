@@ -416,10 +416,12 @@ export default class GameServer implements Party.Server {
 
     // Check if physics has settled after a weapon fire
     if (this.waitingForPhysicsSettle && !anySettling) {
-      // Recheck — make sure NO worm has velocity
+      // Recheck — make sure NO worm has velocity or pending knockback
       const allSettled = this.state.players.every((p) =>
         p.worms.every(
-          (w) => !w.isAlive || (Math.abs(w.vx) < 1 && Math.abs(w.vy) < 1),
+          (w) =>
+            !w.isAlive ||
+            (!w.pendingKnockback && Math.abs(w.vx) < 1 && Math.abs(w.vy) < 1),
         ),
       );
 
