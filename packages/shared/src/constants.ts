@@ -19,8 +19,8 @@ export const WORM_BACKFLIP_VY = -280;
 export const WORM_MAX_CLIMB = 4; // max pixels a worm can step up per walk step
 export const WORM_FRICTION_GROUND = 0.7;
 export const WORM_FRICTION_AIR = 0.0;
-export const FALL_DAMAGE_THRESHOLD = 40; // pixels of fall before damage
-export const FALL_DAMAGE_PER_PIXEL = 0.25; // HP per pixel beyond threshold
+export const FALL_DAMAGE_THRESHOLD = 120; // pixels of fall before damage
+export const FALL_DAMAGE_PER_PIXEL = 0.18; // HP per pixel beyond threshold
 
 // Game defaults
 export const DEFAULT_HP = 100;
@@ -36,7 +36,7 @@ export const MAX_WIND = 100;
 
 // Projectile
 export const MAX_FIRE_POWER = 1.0;
-export const FIRE_POWER_MULTIPLIER = 1100; // power 1.0 = 1100 px/s initial velocity
+export const FIRE_POWER_MULTIPLIER = 850; // power 1.0 = 850 px/s initial velocity
 
 // Death explosion (when a worm dies, it explodes)
 export const DEATH_EXPLOSION_RADIUS = 25;
