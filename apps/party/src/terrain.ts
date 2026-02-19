@@ -395,7 +395,24 @@ export function generateTerrain(
     grid.set(smoothed);
   }
 
-  // ── Step 6: Enforce water boundary and edge margins ──
+  // ── Step 6: Fill terrain down to water level ──
+  // For each column, find the lowest solid pixel and fill everything below it
+  // down to WATER_LEVEL. This prevents terrain from "floating" above water.
+  for (let x = 0; x < TERRAIN_WIDTH; x++) {
+    let lowestSolid = -1;
+    for (let y = WATER_LEVEL - 1; y >= 0; y--) {
+      if (grid[idx(x, y)] === 1) {
+        lowestSolid = y;
+        break;
+      }
+    }
+    if (lowestSolid >= 0) {
+      for (let y = lowestSolid + 1; y < WATER_LEVEL; y++) {
+        grid[idx(x, y)] = 1;
+      }
+    }
+  }
+  // Clear below water level
   for (let y = WATER_LEVEL; y < TERRAIN_HEIGHT; y++) {
     for (let x = 0; x < TERRAIN_WIDTH; x++) {
       grid[idx(x, y)] = 0;
