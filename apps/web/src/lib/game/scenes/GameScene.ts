@@ -786,20 +786,34 @@ export class GameScene extends Phaser.Scene {
         this.onTeleportResult(msg);
         break;
       case "WORM_DAMAGE": {
-        const entity = this.wormEntities.get(msg.wormId);
-        if (entity) {
-          entity.flashDamage(msg.damage);
-          entity.updateState({ health: msg.newHealth });
+        // Defer if we have pending damages
+        if (this.pendingDamages.length > 0 || this.pendingDeaths.length > 0) {
+          this.pendingDamages.push({
+            wormId: msg.wormId,
+            damage: msg.damage,
+            newHealth: msg.newHealth,
+          });
+        } else {
+          const entity = this.wormEntities.get(msg.wormId);
+          if (entity) {
+            entity.flashDamage(msg.damage);
+            entity.updateState({ health: msg.newHealth });
+          }
+          this.updateGameStateWorm(msg.wormId, { health: msg.newHealth });
+          this.refreshHUDPanels();
         }
-        this.updateGameStateWorm(msg.wormId, { health: msg.newHealth });
-        this.refreshHUDPanels();
         break;
       }
       case "WORM_DIED": {
-        const entity = this.wormEntities.get(msg.wormId);
-        entity?.updateState({ isAlive: false });
-        this.updateGameStateWorm(msg.wormId, { isAlive: false, health: 0 });
-        this.refreshHUDPanels();
+        // Defer if we have pending damages (death will be processed in flushPendingDamages)
+        if (this.pendingDamages.length > 0 || this.pendingDeaths.length > 0) {
+          this.pendingDeaths.push({ wormId: msg.wormId, cause: "hp" });
+        } else {
+          const entity = this.wormEntities.get(msg.wormId);
+          entity?.updateState({ isAlive: false });
+          this.updateGameStateWorm(msg.wormId, { isAlive: false, health: 0 });
+          this.refreshHUDPanels();
+        }
         break;
       }
       case "RETREAT_START":
@@ -1572,9 +1586,11 @@ export class GameScene extends Phaser.Scene {
     this.pendingDeaths = [];
   }
 
-  /** Re-render the HUD player panels with current gameState */
+  /** Re-render the HUD player panels with current gameState.
+   *  Skips rebuild while deferred damages are pending (animation will handle it). */
   private refreshHUDPanels(): void {
     if (!this.gameState) return;
+    if (this.pendingDamages.length > 0 || this.pendingDeaths.length > 0) return;
     this.scene.get("HUDScene").events.emit("state_sync", this.gameState);
   }
 
