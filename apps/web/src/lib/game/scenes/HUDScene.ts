@@ -86,9 +86,10 @@ export class HUDScene extends Phaser.Scene {
       this.dismissTurnBanner();
     });
 
-    // Handle window resize
+    // Handle window resize — reposition all HUD elements
     this.scale.on("resize", (gameSize: Phaser.Structs.Size) => {
       this.cameras.main.setSize(gameSize.width, gameSize.height);
+      this.repositionHUD();
     });
   }
 
@@ -190,6 +191,48 @@ export class HUDScene extends Phaser.Scene {
           this.windArrows.push(arrow);
         }
       }
+    }
+  }
+
+  // ─── Resize Repositioning ──────────────────────────────
+
+  private repositionHUD(): void {
+    const { width, height } = this.cameras.main;
+
+    // Timer (bottom-left)
+    this.timerText.setPosition(20, height - 20);
+
+    // Turn text (top-left) — no change needed, stays at (16, 16)
+
+    // Wind display (bottom-right)
+    const barW = this.WIND_BAR_WIDTH;
+    this.windContainer.setPosition(width - 20 - barW / 2, height - 16);
+
+    // Weapon bar (bottom center)
+    const btnSize = 48;
+    const gap = 6;
+    const totalWeaponWidth = this.weaponButtons.length * (btnSize + gap) - gap;
+    const weaponStartX = width / 2 - totalWeaponWidth / 2;
+    this.weaponButtons.forEach((btn, i) => {
+      btn.setPosition(
+        weaponStartX + i * (btnSize + gap) + btnSize / 2,
+        height - 28,
+      );
+    });
+
+    // Player panels — reposition if they exist
+    if (this.cachedGameState) {
+      this.updatePlayerPanels(this.cachedGameState);
+    }
+
+    // Fuse timer (top center)
+    if (this.fuseText) {
+      this.fuseText.setPosition(width / 2, 30);
+    }
+
+    // Turn banner (top center)
+    if (this.turnBanner) {
+      this.turnBanner.setX(width / 2);
     }
   }
 
