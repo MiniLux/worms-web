@@ -989,6 +989,75 @@ export class WormEntity {
     });
   }
 
+  /** Drowning animation — worm sinks below water with a splash, no grave. */
+  drown(): void {
+    if (this.isDead) return;
+    this.isDead = true;
+    this.state.isAlive = false;
+
+    // Hide labels
+    this.nameText.setVisible(false);
+    this.hpText.setVisible(false);
+    this.nameBg.setVisible(false);
+    this.hpBg.setVisible(false);
+    this.hideArrow();
+    this.hideAimLine();
+
+    // Create a splash effect at the water surface
+    const splashY = 680; // WATER_LEVEL
+    const splashX = this.x;
+
+    // Animated water splash particles
+    for (let i = 0; i < 8; i++) {
+      const droplet = this.scene.add.circle(
+        splashX + (Math.random() - 0.5) * 40,
+        splashY,
+        3,
+        0x4488ff,
+        0.8,
+      );
+      droplet.setDepth(15);
+      this.scene.tweens.add({
+        targets: droplet,
+        y: splashY - 30 - Math.random() * 40,
+        x: droplet.x + (Math.random() - 0.5) * 30,
+        alpha: 0,
+        scaleX: 0.3,
+        scaleY: 0.3,
+        duration: 400 + Math.random() * 200,
+        ease: "Quad.easeOut",
+        onComplete: () => droplet.destroy(),
+      });
+    }
+
+    // Sink the worm sprite below the screen
+    if (this.sprite) {
+      this.sprite.setDepth(1); // behind terrain
+      this.scene.tweens.add({
+        targets: this.sprite,
+        y: this.sprite.y + 120,
+        alpha: 0,
+        duration: 800,
+        ease: "Quad.easeIn",
+        onComplete: () => {
+          if (this.sprite) this.sprite.setVisible(false);
+        },
+      });
+    }
+    if (this.fallbackBody) {
+      this.scene.tweens.add({
+        targets: this.fallbackBody,
+        y: this.fallbackBody.y + 120,
+        alpha: 0,
+        duration: 800,
+        ease: "Quad.easeIn",
+        onComplete: () => {
+          if (this.fallbackBody) this.fallbackBody.setVisible(false);
+        },
+      });
+    }
+  }
+
   private die(): void {
     this.isDead = true;
 

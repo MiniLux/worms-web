@@ -46,6 +46,15 @@ export default function ActivityPage() {
   const [players, setPlayers] = useState<Player[]>([]);
   const [localUser, setLocalUser] = useState<DiscordUser | null>(null);
   const [gameId, setGameId] = useState<string | null>(null);
+  const [wormNames, setWormNames] = useState<string[]>(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      const saved = localStorage.getItem("wormNames");
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return [];
+  });
+  const [showTeamSettings, setShowTeamSettings] = useState(false);
   const sdkRef = useRef<DiscordSDK | null>(null);
   const initRef = useRef(false);
 
@@ -131,16 +140,28 @@ export default function ActivityPage() {
     })();
   }, []);
 
+  const updateWormName = useCallback((index: number, name: string) => {
+    setWormNames((prev) => {
+      const next = [...prev];
+      while (next.length < DEFAULT_WORMS_PER_TEAM) next.push("");
+      next[index] = name;
+      localStorage.setItem("wormNames", JSON.stringify(next));
+      return next;
+    });
+  }, []);
+
   // Start the game — build the init payload and transition to game phase
   const startGame = useCallback(() => {
     if (!localUser || !gameId || players.length < 1) return;
 
     // Build the player list for the init payload
+    // Only the local user gets custom worm names
     const gamePlayers = players.map((p) => ({
       id: p.id,
       displayName: p.displayName,
       avatarUrl: p.avatarUrl,
       teamColor: p.teamColor,
+      wormNames: p.id === localUser.playerId ? wormNames : undefined,
     }));
 
     // Add CPU opponent for solo play (same as lobby server does)
@@ -153,6 +174,7 @@ export default function ActivityPage() {
         displayName: "CPU",
         avatarUrl: "",
         teamColor: cpuColor,
+        wormNames: undefined,
       });
     }
 
@@ -169,7 +191,7 @@ export default function ActivityPage() {
     // Store in sessionStorage so GameScene can send it via INIT_GAME
     sessionStorage.setItem("gameInitPayload", JSON.stringify(payload));
     setPhase("playing");
-  }, [localUser, gameId, players]);
+  }, [localUser, gameId, players, wormNames]);
 
   // Determine if current user is "host" (first in participant list)
   const isHost =
@@ -245,6 +267,38 @@ export default function ActivityPage() {
               )}
             </div>
           ))}
+        </div>
+
+        <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
+          <button
+            onClick={() => setShowTeamSettings(!showTeamSettings)}
+            className="flex items-center justify-between w-full text-sm font-semibold text-gray-400 uppercase tracking-wider"
+          >
+            <span>Team Settings</span>
+            <span className="text-xs">{showTeamSettings ? "▲" : "▼"}</span>
+          </button>
+          {showTeamSettings && (
+            <div className="space-y-2 pt-3">
+              <p className="text-xs text-gray-500">
+                Name your worms (saved for future games)
+              </p>
+              {Array.from({ length: DEFAULT_WORMS_PER_TEAM }).map((_, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <span className="text-xs text-gray-500 w-6 text-right">
+                    {i + 1}.
+                  </span>
+                  <input
+                    type="text"
+                    value={wormNames[i] ?? ""}
+                    onChange={(e) => updateWormName(i, e.target.value)}
+                    placeholder={`Worm ${i + 1}`}
+                    maxLength={20}
+                    className="flex-1 bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-gray-500"
+                  />
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {isHost ? (

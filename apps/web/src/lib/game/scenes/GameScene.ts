@@ -993,7 +993,7 @@ export class GameScene extends Phaser.Scene {
   private onWormFellInWater(msg: { wormId: string }): void {
     const entity = this.wormEntities.get(msg.wormId);
     if (entity) {
-      entity.updateState({ isAlive: false });
+      entity.drown();
     }
     this.updateGameStateWorm(msg.wormId, { isAlive: false, health: 0 });
     this.refreshHUDPanels();
