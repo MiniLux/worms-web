@@ -145,7 +145,7 @@ export function simulateBallistic(
   let x = startX;
   let y = startY;
   const dt = PHYSICS_STEP_MS / 1000;
-  const windForce = affectedByWind ? wind * 2.5 : 0;
+  const windForce = affectedByWind ? wind * 5.0 : 0;
 
   const trajectory: TrajectoryPoint[] = [{ x, y, t: 0 }];
 
@@ -184,8 +184,8 @@ export function simulateBallistic(
       };
     }
 
-    // Check out of bounds (sides and top)
-    if (x < -50 || x > TERRAIN_WIDTH + 50 || y < -200) {
+    // Check out of bounds (sides only — allow projectiles to arc high above)
+    if (x < -50 || x > TERRAIN_WIDTH + 50 || y < -2000) {
       return {
         trajectory,
         impactX: Math.round(x),
