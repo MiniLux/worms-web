@@ -374,6 +374,12 @@ export default class GameServer implements Party.Server {
           worm.vx = 0;
           worm.vy = 0;
           this.broadcastAll({ type: "WORM_FELL_IN_WATER", wormId: worm.id });
+
+          // End the turn if the active worm drowned
+          if (isActiveWorm && this.state!.phase === "playing") {
+            this.movingDirection = null;
+            this.waitingForPhysicsSettle = true;
+          }
         }
 
         // Handle landing

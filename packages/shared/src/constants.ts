@@ -19,8 +19,8 @@ export const WORM_BACKFLIP_VY = -280;
 export const WORM_MAX_CLIMB = 4; // max pixels a worm can step up per walk step
 export const WORM_FRICTION_GROUND = 0.7;
 export const WORM_FRICTION_AIR = 0.0;
-export const FALL_DAMAGE_THRESHOLD = 120; // pixels of fall before damage
-export const FALL_DAMAGE_PER_PIXEL = 0.18; // HP per pixel beyond threshold
+export const FALL_DAMAGE_THRESHOLD = 180; // pixels of fall before damage
+export const FALL_DAMAGE_PER_PIXEL = 0.12; // HP per pixel beyond threshold
 
 // Game defaults
 export const DEFAULT_HP = 100;

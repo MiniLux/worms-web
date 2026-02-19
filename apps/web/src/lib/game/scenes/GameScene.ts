@@ -231,10 +231,10 @@ export class GameScene extends Phaser.Scene {
     const partyHost = this.registry.get("partyHost") as string;
 
     this.cameras.main.setBounds(
-      -100,
-      -100,
-      TERRAIN_WIDTH + 200,
-      TERRAIN_HEIGHT + 200,
+      -400,
+      -200,
+      TERRAIN_WIDTH + 800,
+      TERRAIN_HEIGHT + 400,
     );
     this.cameras.main.setZoom(1);
 

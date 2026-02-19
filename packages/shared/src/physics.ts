@@ -616,7 +616,7 @@ export function simulateWormStep(
 
   // Worm is airborne — apply physics
   vy += GRAVITY * dt;
-  const newX = Math.max(halfW, Math.min(TERRAIN_WIDTH - halfW, x + vx * dt));
+  const newX = x + vx * dt; // no clamping — worms can fly off map edges
   const newY = y + vy * dt;
 
   // Check water
