@@ -391,6 +391,7 @@ export class GameScene extends Phaser.Scene {
       activeWorm.showAimLine(this.currentAimAngle, this.currentPower);
       activeWorm.setAimAngle(this.currentAimAngle);
       this.events.emit("aim_update", this.currentAimAngle);
+      this.sendMessage({ type: "AIM", angle: this.currentAimAngle });
     });
 
     // Click for teleport
@@ -793,6 +794,15 @@ export class GameScene extends Phaser.Scene {
       case "CHAT":
         this.scene.get("HUDScene").events.emit("chat", msg);
         break;
+      case "WEAPON_SELECTED":
+        this.onWeaponSelected(msg);
+        break;
+      case "WORM_AIM":
+        this.onWormAim(msg);
+        break;
+      case "WORM_WALKING":
+        this.onWormWalking(msg);
+        break;
       case "ERROR":
         console.error("Game error:", msg.message);
         break;
@@ -976,6 +986,12 @@ export class GameScene extends Phaser.Scene {
     }>;
     deaths: Array<{ wormId: string; cause: string }>;
   }): void {
+    // Trigger put-away animation on the active worm for remote clients
+    if (!this.isMyTurn) {
+      const activeWorm = this.getActiveWorm();
+      activeWorm?.playPutAwayAnim();
+    }
+
     if (msg.trajectory.length > 0) {
       this.animateProjectile(
         msg.trajectory,
@@ -1083,6 +1099,12 @@ export class GameScene extends Phaser.Scene {
     }>;
     deaths: Array<{ wormId: string; cause: string }>;
   }): void {
+    // Trigger punch animation on the active worm for remote clients
+    if (!this.isMyTurn) {
+      const activeWorm = this.getActiveWorm();
+      activeWorm?.playPunchAnim();
+    }
+
     for (const dmg of msg.damages) {
       const entity = this.wormEntities.get(dmg.wormId);
       if (entity) {
@@ -1133,6 +1155,29 @@ export class GameScene extends Phaser.Scene {
 
       this.cameras.main.pan(msg.x, msg.y, 300);
     }
+  }
+
+  private onWeaponSelected(msg: { wormId: string; weaponId: WeaponId }): void {
+    // Only apply to remote worms (our own worm is already handled locally)
+    if (this.isMyTurn) return;
+    const entity = this.wormEntities.get(msg.wormId);
+    entity?.setWeaponHold(msg.weaponId);
+  }
+
+  private onWormAim(msg: { wormId: string; angle: number }): void {
+    if (this.isMyTurn) return;
+    const entity = this.wormEntities.get(msg.wormId);
+    if (entity) {
+      entity.setAimAngle(msg.angle);
+      entity.showAimLine(msg.angle, 0);
+    }
+  }
+
+  private onWormWalking(msg: { wormId: string; isWalking: boolean }): void {
+    // Only apply to remote worms (our own worm is already handled locally)
+    if (this.isMyTurn) return;
+    const entity = this.wormEntities.get(msg.wormId);
+    entity?.setWalking(msg.isWalking);
   }
 
   // ─── Projectile Animation ───────────────────────────────

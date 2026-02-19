@@ -148,6 +148,7 @@ export type GameClientMessage =
   | { type: "SKIP_TURN" }
   | { type: "PAUSE_TIMER" }
   | { type: "APPLY_KNOCKBACK" }
+  | { type: "AIM"; angle: number }
   | { type: "CHAT"; text: string };
 
 // ─── Server → Client Messages ───────────────────────────
@@ -278,7 +279,14 @@ export type GameServerMessage =
   | { type: "PLAYER_DISCONNECTED"; playerId: string }
   | { type: "PLAYER_RECONNECTED"; playerId: string }
   | { type: "CHAT"; playerId: string; displayName: string; text: string }
-  | { type: "ERROR"; message: string };
+  | { type: "ERROR"; message: string }
+  | { type: "WEAPON_SELECTED"; wormId: string; weaponId: WeaponId }
+  | { type: "WORM_AIM"; wormId: string; angle: number }
+  | {
+      type: "WORM_WALKING";
+      wormId: string;
+      isWalking: boolean;
+    };
 
 // ─── Game Init (Lobby → Game server handoff) ────────────
 

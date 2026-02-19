@@ -133,7 +133,7 @@ export default class GameServer implements Party.Server {
         this.handleJump(msg.kind, sender);
         break;
       case "SELECT_WEAPON":
-        // No server action needed, purely client state
+        this.handleSelectWeapon(msg.weaponId, sender);
         break;
       case "FIRE":
         this.handleFire(msg.weaponId, msg.angle, msg.power, sender, msg.fuseMs);
@@ -155,6 +155,9 @@ export default class GameServer implements Party.Server {
         break;
       case "APPLY_KNOCKBACK":
         this.handleApplyKnockback(sender);
+        break;
+      case "AIM":
+        this.handleAim(msg.angle, sender);
         break;
       case "CHAT":
         this.handleChat(msg.text, sender);
@@ -577,11 +580,21 @@ export default class GameServer implements Party.Server {
   ): void {
     if (!this.isActivePlayer(conn) || !this.state) return;
     this.movingDirection = direction;
+    this.broadcastAll({
+      type: "WORM_WALKING",
+      wormId: this.state.activeWormId,
+      isWalking: true,
+    });
   }
 
   private handleMoveStop(conn: Party.Connection): void {
     if (!this.isActivePlayer(conn) || !this.state) return;
     this.movingDirection = null;
+    this.broadcastAll({
+      type: "WORM_WALKING",
+      wormId: this.state.activeWormId,
+      isWalking: false,
+    });
   }
 
   private handleJump(
@@ -730,6 +743,24 @@ export default class GameServer implements Party.Server {
         worm.pendingKnockback = undefined;
       }
     }
+  }
+
+  private handleSelectWeapon(weaponId: WeaponId, conn: Party.Connection): void {
+    if (!this.isActivePlayer(conn) || !this.state) return;
+    this.broadcastAll({
+      type: "WEAPON_SELECTED",
+      wormId: this.state.activeWormId,
+      weaponId,
+    });
+  }
+
+  private handleAim(angle: number, conn: Party.Connection): void {
+    if (!this.isActivePlayer(conn) || !this.state) return;
+    this.broadcastAll({
+      type: "WORM_AIM",
+      wormId: this.state.activeWormId,
+      angle,
+    });
   }
 
   private handleChat(text: string, conn: Party.Connection): void {
