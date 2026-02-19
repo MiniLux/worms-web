@@ -687,6 +687,7 @@ export default class GameServer implements Party.Server {
     this.movingDirection = null;
 
     const messages = processTeleport(this.state, x, y);
+    if (messages.length === 0) return; // Teleport failed (e.g. no ammo)
     for (const m of messages) this.broadcastAll(m);
 
     // Worm has a small vy so physics loop will drop it to the ground,

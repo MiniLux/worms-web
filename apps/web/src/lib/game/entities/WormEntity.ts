@@ -1,5 +1,6 @@
 import * as Phaser from "phaser";
 import type { WormState, TeamColor, WeaponId } from "@worms/shared";
+import { getBitmapPixel } from "@worms/shared";
 import { createExplosion } from "../effects/ExplosionEffect";
 
 const COLOR_MAP: Record<TeamColor, number> = {
@@ -90,6 +91,8 @@ export class WormEntity {
   private labelsHidden: boolean = false;
   private nameBg: Phaser.GameObjects.Graphics;
   private hpBg: Phaser.GameObjects.Graphics;
+  private graveSprite: Phaser.GameObjects.Sprite | null = null;
+  private graveVy: number = 0;
 
   constructor(
     private scene: Phaser.Scene,
@@ -638,8 +641,8 @@ export class WormEntity {
           this.x + Math.cos(angle) * distance,
           this.y + Math.sin(angle) * distance,
         );
-        // Pick frame based on aim angle + 45deg offset (32 frames, frame 0 = up, clockwise)
-        let normalizedAngle = angle + Math.PI / 2 + Math.PI / 4 + Math.PI / 12; // offset so 0 = up, +45deg +15deg rotation
+        // Pick frame based on aim angle (32 frames, frame 0 = up, clockwise)
+        let normalizedAngle = angle + Math.PI / 2; // offset so 0 = up
         if (normalizedAngle < 0) normalizedAngle += 2 * Math.PI;
         normalizedAngle = normalizedAngle % (2 * Math.PI);
         const frame = Math.round((normalizedAngle / (2 * Math.PI)) * 32) % 32;
@@ -767,6 +770,17 @@ export class WormEntity {
       this.powerGauge.lineTo(x0r, y0r);
       this.powerGauge.closePath();
       this.powerGauge.fillPath();
+    }
+
+    // Rounded cap at the tip of the cone
+    if (length > 0) {
+      const tipX = cx + Math.cos(angle) * length;
+      const tipY = cy + Math.sin(angle) * length;
+      const tipRadius = length * Math.tan(halfSpread);
+      const capColor = this.getPowerColor(1);
+      const capAlpha = 0.7 - 1 * 0.3;
+      this.powerGauge.fillStyle(capColor, capAlpha);
+      this.powerGauge.fillCircle(tipX, tipY, tipRadius);
     }
   }
 
@@ -1015,8 +1029,8 @@ export class WormEntity {
 
   private showGrave(): void {
     if (hasSpritesheet(this.scene, "grave")) {
-      const grave = this.scene.add.sprite(this.x, this.y, "grave", 0);
-      grave.setDepth(3);
+      this.graveSprite = this.scene.add.sprite(this.x, this.y, "grave", 0);
+      this.graveSprite.setDepth(3);
       // Create and play idle grave animation
       const animKey = "grave_idle";
       if (!this.scene.anims.exists(animKey)) {
@@ -1031,7 +1045,7 @@ export class WormEntity {
           yoyo: true,
         });
       }
-      grave.play(animKey);
+      this.graveSprite.play(animKey);
     } else {
       const rip = this.scene.add.text(this.x, this.y - 10, "RIP", {
         fontSize: "8px",
@@ -1042,6 +1056,44 @@ export class WormEntity {
       });
       rip.setOrigin(0.5);
       rip.setDepth(3);
+    }
+  }
+
+  /** Apply gravity to the grave sprite if terrain below has been destroyed.
+   *  Called from GameScene with the current terrain bitmap. */
+  updateGrave(bitmap: Uint8Array): void {
+    if (!this.graveSprite) return;
+    const gx = Math.round(this.graveSprite.x);
+    const gy = Math.round(this.graveSprite.y);
+    const feetY = gy + 15; // half of the grave height (~30px sprite)
+
+    // Check if there's solid terrain under the grave
+    const hasTerrain =
+      feetY < 680 && feetY >= 0 && getBitmapPixel(bitmap, gx, feetY);
+
+    if (hasTerrain) {
+      this.graveVy = 0;
+      return;
+    }
+
+    // No terrain — apply gravity
+    const dt = this.scene.game.loop.delta / 1000;
+    this.graveVy += 400 * dt; // gravity
+    this.graveSprite.y += this.graveVy * dt;
+
+    // Find surface below and snap to it
+    for (let y = Math.round(this.graveSprite.y) + 15; y < 680; y++) {
+      if (getBitmapPixel(bitmap, gx, y)) {
+        this.graveSprite.y = y - 15;
+        this.graveVy = 0;
+        return;
+      }
+    }
+
+    // Fell into water — hide
+    if (this.graveSprite.y > 680) {
+      this.graveSprite.destroy();
+      this.graveSprite = null;
     }
   }
 
@@ -1056,6 +1108,7 @@ export class WormEntity {
     this.powerGauge.destroy();
     this.crosshairTween?.stop();
     this.crosshairSprite?.destroy();
+    this.graveSprite?.destroy();
     this.hideArrow();
   }
 }

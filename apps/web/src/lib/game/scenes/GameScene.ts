@@ -541,6 +541,12 @@ export class GameScene extends Phaser.Scene {
     // Update worm lerping
     this.wormEntities.forEach((entity) => entity.update());
 
+    // Update grave physics (fall when terrain below is destroyed)
+    const bitmap = this.terrainRenderer?.getBitmap();
+    if (bitmap) {
+      this.wormEntities.forEach((entity) => entity.updateGrave(bitmap));
+    }
+
     // Camera: follow active worm when it moves, otherwise allow edge-scroll
     const activeWorm = this.getActiveWorm();
     if (activeWorm && this.isMyTurn) {
