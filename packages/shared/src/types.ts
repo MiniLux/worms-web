@@ -286,6 +286,16 @@ export type GameServerMessage =
       type: "WORM_WALKING";
       wormId: string;
       isWalking: boolean;
+    }
+  | {
+      type: "WORM_DEATH_EXPLOSION";
+      wormId: string;
+      x: number;
+      y: number;
+      radius: number;
+      terrainDestruction: TerrainDestructionEvent[];
+      damages: DamageEvent[];
+      deaths: WormDeathEvent[];
     };
 
 // ─── Game Init (Lobby → Game server handoff) ────────────

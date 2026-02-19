@@ -13,10 +13,14 @@ import {
   WORM_WIDTH,
   WORM_HEIGHT,
   WEAPON_DEFINITIONS,
+  DEATH_EXPLOSION_RADIUS,
+  DEATH_EXPLOSION_DAMAGE,
   decodeBitmap,
   encodeBitmap,
+  eraseCircleFromBitmap,
   simulateWormStep,
   computeFallDamage,
+  computeKnockback,
 } from "@worms/shared";
 import {
   initializeGame,
@@ -274,6 +278,7 @@ export default class GameServer implements Party.Server {
                 wormId: worm.id,
                 cause: "hp",
               });
+              this.processDeathExplosion(worm.id);
             }
             worm.pendingKnockback = undefined;
           } else {
@@ -385,6 +390,7 @@ export default class GameServer implements Party.Server {
             });
             if (worm.health <= 0) {
               worm.isAlive = false;
+              this.processDeathExplosion(worm.id);
             }
           }
         }
@@ -740,6 +746,7 @@ export default class GameServer implements Party.Server {
             wormId: worm.id,
             cause: "hp",
           });
+          this.processDeathExplosion(worm.id);
         }
         worm.pendingKnockback = undefined;
       }
@@ -784,6 +791,85 @@ export default class GameServer implements Party.Server {
       displayName: senderName,
       text: text.substring(0, 200),
     });
+  }
+
+  // ─── Death Explosion ────────────────────────────────────
+
+  /** When a worm dies, process a small explosion that damages nearby worms and destroys terrain. */
+  private processDeathExplosion(wormId: string): void {
+    if (!this.state) return;
+    const deadWorm = this.state.players
+      .flatMap((p) => p.worms)
+      .find((w) => w.id === wormId);
+    if (!deadWorm) return;
+
+    const ex = deadWorm.x;
+    const ey = deadWorm.y;
+    const radius = DEATH_EXPLOSION_RADIUS;
+
+    // Destroy terrain
+    const bitmap = this.getBitmap();
+    if (bitmap) {
+      eraseCircleFromBitmap(bitmap, ex, ey, radius);
+      this.syncBitmapToState();
+    }
+
+    const damages: Array<{
+      wormId: string;
+      damage: number;
+      newHealth: number;
+      knockbackVx: number;
+      knockbackVy: number;
+    }> = [];
+    const deaths: Array<{
+      wormId: string;
+      cause: "hp" | "water" | "outofbounds";
+    }> = [];
+
+    // Damage nearby worms (excluding the dead worm itself)
+    for (const p of this.state.players) {
+      for (const w of p.worms) {
+        if (!w.isAlive || w.id === wormId) continue;
+        const kb = computeKnockback(
+          w.x,
+          w.y,
+          ex,
+          ey,
+          radius,
+          DEATH_EXPLOSION_DAMAGE,
+          1.0,
+        );
+        if (kb.damage > 0) {
+          w.health = Math.max(0, w.health - kb.damage);
+          w.vx += kb.vx;
+          w.vy += kb.vy;
+          damages.push({
+            wormId: w.id,
+            damage: kb.damage,
+            newHealth: w.health,
+            knockbackVx: kb.vx,
+            knockbackVy: kb.vy,
+          });
+          if (w.health <= 0) {
+            w.isAlive = false;
+            deaths.push({ wormId: w.id, cause: "hp" });
+          }
+        }
+      }
+    }
+
+    this.broadcastAll({
+      type: "WORM_DEATH_EXPLOSION",
+      wormId,
+      x: ex,
+      y: ey,
+      radius,
+      terrainDestruction: [{ x: ex, y: ey, radius }],
+      damages,
+      deaths,
+    });
+
+    this.invalidateBitmapCache();
   }
 
   // ─── Broadcast ─────────────────────────────────────────

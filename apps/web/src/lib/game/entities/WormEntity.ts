@@ -167,7 +167,7 @@ export class WormEntity {
     this.aimLine.setDepth(5);
     this.aimLine.setVisible(false);
 
-    // Crosshair sprite (animated spin, team colored — positioned along aim direction)
+    // Crosshair sprite (team colored — positioned along aim direction)
     const crosshairKey =
       teamColor === "blue" ? "crosshair_blue" : "crosshair_red";
     if (hasSpritesheet(scene, crosshairKey)) {
@@ -175,20 +175,6 @@ export class WormEntity {
       this.crosshairSprite.setDepth(7);
       this.crosshairSprite.setScale(1.0);
       this.crosshairSprite.setVisible(false);
-
-      // Create looping spin animation for the crosshair
-      const crosshairAnimKey = "anim_" + crosshairKey;
-      if (!scene.anims.exists(crosshairAnimKey)) {
-        scene.anims.create({
-          key: crosshairAnimKey,
-          frames: scene.anims.generateFrameNumbers(crosshairKey, {
-            start: 0,
-            end: 31,
-          }),
-          frameRate: 15,
-          repeat: -1,
-        });
-      }
     }
 
     this.powerGauge = scene.add.graphics();
@@ -655,16 +641,12 @@ export class WormEntity {
           this.x + Math.cos(angle) * distance,
           this.y + Math.sin(angle) * distance,
         );
-        // Play looping spin animation
-        const crosshairKey =
-          this.teamColor === "blue" ? "crosshair_blue" : "crosshair_red";
-        const crosshairAnimKey = "anim_" + crosshairKey;
-        if (
-          this.scene.anims.exists(crosshairAnimKey) &&
-          this.crosshairSprite.anims.currentAnim?.key !== crosshairAnimKey
-        ) {
-          this.crosshairSprite.play(crosshairAnimKey);
-        }
+        // Pick frame based on aim angle + 45deg offset (32 frames, frame 0 = up, clockwise)
+        let normalizedAngle = angle + Math.PI / 2 + Math.PI / 4 + Math.PI / 12; // offset so 0 = up, +45deg +15deg rotation
+        if (normalizedAngle < 0) normalizedAngle += 2 * Math.PI;
+        normalizedAngle = normalizedAngle % (2 * Math.PI);
+        const frame = Math.round((normalizedAngle / (2 * Math.PI)) * 32) % 32;
+        this.crosshairSprite.setFrame(frame);
         if (
           !this.crosshairSprite.visible ||
           this.crosshairSprite.scaleX < 1.0
@@ -1015,15 +997,13 @@ export class WormEntity {
     ) {
       this.sprite.play("worm_die_anim");
       this.sprite.once("animationcomplete", () => {
-        // Worms 2-style death explosion before grave appears
-        createExplosion(this.scene, this.x, this.y, 20);
+        // Death explosion visual is handled by the server's WORM_DEATH_EXPLOSION message
         if (this.sprite) {
           this.sprite.setVisible(false);
         }
         this.showGrave();
       });
     } else {
-      createExplosion(this.scene, this.x, this.y, 20);
       if (this.fallbackBody) {
         this.fallbackBody.setFillStyle(0x666666);
         this.fallbackBody.setAlpha(0.5);

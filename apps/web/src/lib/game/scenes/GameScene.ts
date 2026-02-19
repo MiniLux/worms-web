@@ -809,6 +809,9 @@ export class GameScene extends Phaser.Scene {
       case "WORM_WALKING":
         this.onWormWalking(msg);
         break;
+      case "WORM_DEATH_EXPLOSION":
+        this.onDeathExplosion(msg);
+        break;
       case "ERROR":
         console.error("Game error:", msg.message);
         break;
@@ -1161,6 +1164,52 @@ export class GameScene extends Phaser.Scene {
 
       this.cameras.main.pan(msg.x, msg.y, 300);
     }
+  }
+
+  private onDeathExplosion(msg: {
+    wormId: string;
+    x: number;
+    y: number;
+    radius: number;
+    terrainDestruction: Array<{ x: number; y: number; radius: number }>;
+    damages: Array<{
+      wormId: string;
+      damage: number;
+      newHealth: number;
+      knockbackVx: number;
+      knockbackVy: number;
+    }>;
+    deaths: Array<{ wormId: string; cause: string }>;
+  }): void {
+    // Visual explosion
+    createExplosion(this, msg.x, msg.y, msg.radius);
+
+    // Terrain destruction
+    for (const td of msg.terrainDestruction) {
+      this.terrainRenderer?.eraseCircle(td.x, td.y, td.radius);
+    }
+
+    // Apply damage and knockback
+    for (const dmg of msg.damages) {
+      const entity = this.wormEntities.get(dmg.wormId);
+      if (entity) {
+        entity.flashDamage(dmg.damage);
+        entity.updateState({
+          health: dmg.newHealth,
+          vx: dmg.knockbackVx ?? 0,
+          vy: dmg.knockbackVy ?? 0,
+        });
+      }
+      this.updateGameStateWorm(dmg.wormId, { health: dmg.newHealth });
+    }
+
+    for (const death of msg.deaths) {
+      const entity = this.wormEntities.get(death.wormId);
+      entity?.updateState({ isAlive: false });
+      this.updateGameStateWorm(death.wormId, { isAlive: false, health: 0 });
+    }
+
+    this.refreshHUDPanels();
   }
 
   private onWeaponSelected(msg: { wormId: string; weaponId: WeaponId }): void {

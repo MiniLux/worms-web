@@ -36,7 +36,11 @@ export const MAX_WIND = 100;
 
 // Projectile
 export const MAX_FIRE_POWER = 1.0;
-export const FIRE_POWER_MULTIPLIER = 500; // power 1.0 = 500 px/s initial velocity
+export const FIRE_POWER_MULTIPLIER = 900; // power 1.0 = 900 px/s initial velocity
+
+// Death explosion (when a worm dies, it explodes)
+export const DEATH_EXPLOSION_RADIUS = 25;
+export const DEATH_EXPLOSION_DAMAGE = 25;
 
 // Terrain themes
 export const TERRAIN_THEMES = [
