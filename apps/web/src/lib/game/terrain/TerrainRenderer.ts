@@ -138,11 +138,11 @@ export class TerrainRenderer {
     this.image.setDepth(1);
 
     // Water — Worms 2 style: deep base + 5 layered translucent waves
-    const waterHeight = TERRAIN_HEIGHT - WATER_LEVEL + 100;
+    const waterHeight = TERRAIN_HEIGHT - WATER_LEVEL + 400;
     this.waterRect = scene.add.rectangle(
       TERRAIN_WIDTH / 2,
       WATER_LEVEL + waterHeight / 2,
-      TERRAIN_WIDTH + 200,
+      TERRAIN_WIDTH + 1000,
       waterHeight,
       0x1a1a3e,
       0.85,
@@ -226,8 +226,8 @@ export class TerrainRenderer {
     this.waterWave.clear();
 
     const baseY = WATER_LEVEL;
-    const startX = -100;
-    const endX = TERRAIN_WIDTH + 100;
+    const startX = -500;
+    const endX = TERRAIN_WIDTH + 500;
     const step = 4;
     const bottomY = baseY + 80;
 
@@ -766,9 +766,9 @@ export class TerrainRenderer {
     const gradH = this.gradientH;
     const gradW = this.gradientData!.width;
 
-    const totalH = TERRAIN_HEIGHT + 400;
+    const totalH = TERRAIN_HEIGHT + 800;
     for (let screenY = 0; screenY < totalH; screenY++) {
-      const drawY = screenY - 200;
+      const drawY = screenY - 300;
       const gy = Math.min(
         gradH - 1,
         Math.max(0, Math.floor((screenY / totalH) * gradH)),
@@ -780,7 +780,7 @@ export class TerrainRenderer {
       const color = (r << 16) | (g << 8) | b;
 
       this.background.fillStyle(color, 1);
-      this.background.fillRect(-200, drawY, TERRAIN_WIDTH + 400, 1);
+      this.background.fillRect(-500, drawY, TERRAIN_WIDTH + 1000, 1);
     }
   }
 
@@ -791,17 +791,17 @@ export class TerrainRenderer {
 
     this.background.fillStyle(c1, 1);
     this.background.fillRect(
-      -200,
-      -200,
-      TERRAIN_WIDTH + 400,
-      TERRAIN_HEIGHT / 2 + 200,
+      -500,
+      -300,
+      TERRAIN_WIDTH + 1000,
+      TERRAIN_HEIGHT / 2 + 300,
     );
     this.background.fillStyle(c2, 1);
     this.background.fillRect(
-      -200,
+      -500,
       TERRAIN_HEIGHT / 2,
-      TERRAIN_WIDTH + 400,
-      TERRAIN_HEIGHT / 2 + 200,
+      TERRAIN_WIDTH + 1000,
+      TERRAIN_HEIGHT / 2 + 500,
     );
   }
 
