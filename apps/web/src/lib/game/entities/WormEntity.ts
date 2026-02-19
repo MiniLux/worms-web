@@ -41,6 +41,7 @@ const WEAPON_DRAW_SPRITES: Record<string, { texture: string; frames: number }> =
     bazooka: { texture: "worm_bazlnk", frames: 7 },
     grenade: { texture: "worm_grnlnk", frames: 10 },
     teleport: { texture: "worm_tellnk", frames: 10 },
+    fire_punch: { texture: "worm_japbak", frames: 9 },
   };
 
 /** Weapon fire animation (played once on firing) */
@@ -59,6 +60,7 @@ const WEAPON_PUTAWAY_SPRITES: Record<
   bazooka: { texture: "worm_bazlnk", frames: 7, reverse: true },
   grenade: { texture: "worm_grnbak", frames: 10, reverse: false },
   teleport: { texture: "worm_telbak", frames: 10, reverse: false },
+  fire_punch: { texture: "worm_japbak", frames: 9, reverse: true },
 };
 
 export class WormEntity {

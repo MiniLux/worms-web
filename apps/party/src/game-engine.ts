@@ -53,14 +53,21 @@ export function initializeGame(payload: GameInitPayload): GameState {
   const totalWorms = payload.players.length * wormsPerTeam;
   const spawnPoints = getSpawnPoints(bitmap, totalWorms);
 
+  // Shuffle spawn points so teams are randomly interleaved across the map
+  for (let i = spawnPoints.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [spawnPoints[i], spawnPoints[j]] = [spawnPoints[j], spawnPoints[i]];
+  }
+
+  let spawnCounter = 0;
   const players: PlayerState[] = payload.players.map((p, playerIdx) => {
     const worms: WormState[] = [];
     for (let w = 0; w < wormsPerTeam; w++) {
-      const spawnIdx = playerIdx * wormsPerTeam + w;
-      const spawn = spawnPoints[spawnIdx] || {
-        x: 100 + spawnIdx * 200,
+      const spawn = spawnPoints[spawnCounter] || {
+        x: 100 + spawnCounter * 200,
         y: 300,
       };
+      spawnCounter++;
       const customName = p.wormNames?.[w];
       worms.push({
         id: `${p.id}-worm-${w}`,

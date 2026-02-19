@@ -393,6 +393,11 @@ export default class GameServer implements Party.Server {
               worm.isAlive = false;
               this.processDeathExplosion(worm.id);
             }
+            // If the active worm takes fall damage, end their turn
+            if (isActiveWorm && this.state!.phase === "playing") {
+              this.movingDirection = null;
+              this.waitingForPhysicsSettle = true;
+            }
           }
         }
       }

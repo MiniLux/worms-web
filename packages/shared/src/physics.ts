@@ -550,6 +550,18 @@ export function simulateWormStep(
 
       if (newSurfaceY >= 0) {
         const climb = y + halfH - newSurfaceY;
+        if (climb > WORM_MAX_CLIMB) {
+          // Too steep upward — can't walk there
+          return {
+            x,
+            y,
+            vx: 0,
+            vy: 0,
+            landed: false,
+            landingVy: 0,
+            inWater: false,
+          };
+        }
         if (climb >= -WORM_MAX_CLIMB) {
           // Can walk: surface is within climbable range
           return {
@@ -562,16 +574,7 @@ export function simulateWormStep(
             inWater: false,
           };
         }
-        // Too steep — can't walk there
-        return {
-          x,
-          y,
-          vx: 0,
-          vy: 0,
-          landed: false,
-          landingVy: 0,
-          inWater: false,
-        };
+        // Steep drop — walk forward and start falling
       }
 
       // No ground at target — check if there's a drop
@@ -664,7 +667,7 @@ export function simulateWormStep(
         y: surfaceY - halfH,
         vx: newVx,
         vy: -Math.abs(vy) * 0.2, // small bounce
-        landed: false,
+        landed: true,
         landingVy,
         inWater: false,
       };
