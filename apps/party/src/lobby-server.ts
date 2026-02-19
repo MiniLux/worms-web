@@ -273,6 +273,7 @@ export default class LobbyServer implements Party.Server {
         displayName: "CPU",
         avatarUrl: "",
         teamColor: cpuColor,
+        wormNames: ["Prézidan", "Maitre clébard", "Testoludo", "Agagougou"],
       });
     }
 

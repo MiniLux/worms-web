@@ -1548,42 +1548,49 @@ export class GameScene extends Phaser.Scene {
     if (this.pendingDamages.length === 0 && this.pendingDeaths.length === 0)
       return;
 
+    const DELAY_BEFORE = 2000;
     const DRAIN_DURATION = 800;
 
-    // Show floating damage numbers and animate per-worm HP label counting down
-    for (const dmg of this.pendingDamages) {
-      const entity = this.wormEntities.get(dmg.wormId);
-      if (entity) {
-        entity.flashDamage(dmg.damage);
-        // Animate worm HP label counting down instead of instant update
-        entity.animateHealthDrain(dmg.newHealth, DRAIN_DURATION);
-      }
-      this.updateGameStateWorm(dmg.wormId, { health: dmg.newHealth });
-    }
-
-    // Animate HUD health bars draining (instead of instant rebuild)
-    if (this.gameState) {
-      this.scene.get("HUDScene").events.emit("animate_damage", this.gameState);
-    }
-
-    // Process deferred deaths after drain animation completes
+    // Capture pending data and clear arrays immediately
+    const damages = [...this.pendingDamages];
     const deaths = [...this.pendingDeaths];
-    if (deaths.length > 0) {
-      this.time.delayedCall(DRAIN_DURATION, () => {
-        for (const death of deaths) {
-          const entity = this.wormEntities.get(death.wormId);
-          entity?.updateState({ isAlive: false });
-          this.updateGameStateWorm(death.wormId, {
-            isAlive: false,
-            health: 0,
-          });
-        }
-        this.refreshHUDPanels();
-      });
-    }
-
     this.pendingDamages = [];
     this.pendingDeaths = [];
+
+    // 2s pause before showing the health drain (like Worms 2)
+    this.time.delayedCall(DELAY_BEFORE, () => {
+      // Show floating damage numbers and animate per-worm HP label counting down
+      for (const dmg of damages) {
+        const entity = this.wormEntities.get(dmg.wormId);
+        if (entity) {
+          entity.flashDamage(dmg.damage);
+          entity.animateHealthDrain(dmg.newHealth, DRAIN_DURATION);
+        }
+        this.updateGameStateWorm(dmg.wormId, { health: dmg.newHealth });
+      }
+
+      // Animate HUD health bars draining
+      if (this.gameState) {
+        this.scene
+          .get("HUDScene")
+          .events.emit("animate_damage", this.gameState);
+      }
+
+      // Process deferred deaths after drain animation completes
+      if (deaths.length > 0) {
+        this.time.delayedCall(DRAIN_DURATION, () => {
+          for (const death of deaths) {
+            const entity = this.wormEntities.get(death.wormId);
+            entity?.updateState({ isAlive: false });
+            this.updateGameStateWorm(death.wormId, {
+              isAlive: false,
+              health: 0,
+            });
+          }
+          this.refreshHUDPanels();
+        });
+      }
+    });
   }
 
   /** Re-render the HUD player panels with current gameState.

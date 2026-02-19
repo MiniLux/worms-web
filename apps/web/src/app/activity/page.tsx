@@ -174,7 +174,7 @@ export default function ActivityPage() {
         displayName: "CPU",
         avatarUrl: "",
         teamColor: cpuColor,
-        wormNames: undefined,
+        wormNames: ["Prézidan", "Maitre clébard", "Testoludo", "Agagougou"],
       });
     }
 
