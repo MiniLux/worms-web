@@ -244,6 +244,11 @@ export class GameScene extends Phaser.Scene {
     this.createSmokeAnim();
     this.createWindParticleAnims();
 
+    console.log("[GameScene] Connecting PartySocket", {
+      partyHost,
+      gameId,
+      party: "game",
+    });
     this.socket = new PartySocket({
       host: partyHost,
       room: gameId,
@@ -251,26 +256,40 @@ export class GameScene extends Phaser.Scene {
     });
 
     this.socket.addEventListener("open", () => {
+      console.log("[GameScene] Socket opened");
       const initPayloadRaw = sessionStorage.getItem("gameInitPayload");
       if (initPayloadRaw) {
         try {
           const payload = JSON.parse(initPayloadRaw);
+          console.log("[GameScene] Sending INIT_GAME", payload);
           this.sendMessage({ type: "INIT_GAME", payload });
         } catch {
           // ignore
         }
         sessionStorage.removeItem("gameInitPayload");
+      } else {
+        console.log("[GameScene] No gameInitPayload in sessionStorage");
       }
       this.sendMessage({ type: "JOIN_GAME", playerId: this.playerId });
     });
 
     this.socket.addEventListener("message", (e: MessageEvent) => {
       const msg = JSON.parse(e.data as string) as GameServerMessage;
+      if (msg.type === "GAME_STATE_SYNC") {
+        console.log("[GameScene] Received GAME_STATE_SYNC", msg);
+      } else if (msg.type === "ERROR") {
+        console.error("[GameScene] Server error:", msg);
+      }
       this.handleServerMessage(msg);
     });
 
-    this.socket.addEventListener("close", () => {
+    this.socket.addEventListener("close", (e) => {
+      console.log("[GameScene] Socket closed", e);
       this.events.emit("disconnected");
+    });
+
+    this.socket.addEventListener("error", (e) => {
+      console.error("[GameScene] Socket error", e);
     });
 
     this.scene.launch("HUDScene");
