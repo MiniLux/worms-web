@@ -989,6 +989,31 @@ export class WormEntity {
     });
   }
 
+  /** Animate HP label counting down from current to new value (Worms 2 style) */
+  animateHealthDrain(newHealth: number, duration: number): void {
+    const oldHealth = this.state.health;
+    this.state.health = newHealth;
+
+    if (oldHealth === newHealth) return;
+
+    const counter = { val: oldHealth };
+    this.scene.tweens.add({
+      targets: counter,
+      val: newHealth,
+      duration,
+      ease: "Linear",
+      onUpdate: () => {
+        this.hpText.setText(String(Math.round(counter.val)));
+      },
+      onComplete: () => {
+        this.hpText.setText(String(newHealth));
+        if (!this.labelsHidden && !this.isDead) {
+          this.drawLabelBackgrounds();
+        }
+      },
+    });
+  }
+
   /** Drowning animation — worm sinks below water with a splash, no grave. */
   drown(): void {
     if (this.isDead) return;

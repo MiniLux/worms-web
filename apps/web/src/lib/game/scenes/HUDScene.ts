@@ -8,6 +8,12 @@ export class HUDScene extends Phaser.Scene {
   private turnText!: Phaser.GameObjects.Text;
   private weaponButtons: Phaser.GameObjects.Container[] = [];
   private playerPanels: Phaser.GameObjects.Container[] = [];
+  // Tracked references for animated health drain
+  private hpFills: Phaser.GameObjects.Rectangle[] = [];
+  private hpLabels: Phaser.GameObjects.Text[] = [];
+  private hpMaxWidths: number[] = [];
+  private hpCurrentTotals: number[] = [];
+  private hpMaxTotals: number[] = [];
   private playerId: string = "";
   private timerInterval: ReturnType<typeof setInterval> | null = null;
   private timeRemaining: number = 45;
@@ -76,6 +82,7 @@ export class HUDScene extends Phaser.Scene {
 
     // Listen for network events forwarded by GameScene
     this.events.on("state_sync", this.onStateSync, this);
+    this.events.on("animate_damage", this.onAnimateDamage, this);
     this.events.on("turn_start", this.onTurnStart, this);
     this.events.on("timer_sync", this.onTimerSync, this);
     this.events.on("game_over", this.onGameOver, this);
@@ -549,6 +556,11 @@ export class HUDScene extends Phaser.Scene {
     // Clear old panels
     this.playerPanels.forEach((p) => p.destroy());
     this.playerPanels = [];
+    this.hpFills = [];
+    this.hpLabels = [];
+    this.hpMaxWidths = [];
+    this.hpCurrentTotals = [];
+    this.hpMaxTotals = [];
 
     const { width, height } = this.cameras.main;
 
@@ -591,9 +603,10 @@ export class HUDScene extends Phaser.Scene {
       });
       const pct = maxHp > 0 ? totalHp / maxHp : 0;
       const teamColor = this.getTeamHex(player.teamColor);
+      const fillWidth = (barWidth - 2) * pct;
 
       const hpFill = this.add
-        .rectangle(1, 1, (barWidth - 2) * pct, barHeight - 2, teamColor)
+        .rectangle(1, 1, fillWidth, barHeight - 2, teamColor)
         .setOrigin(0, 0);
 
       // HP text on bar
@@ -610,6 +623,59 @@ export class HUDScene extends Phaser.Scene {
       container.add([hpBg, hpFill, name, hpLabel]);
       container.setDepth(20);
       this.playerPanels.push(container);
+
+      // Track references for animated drain
+      this.hpFills.push(hpFill);
+      this.hpLabels.push(hpLabel);
+      this.hpMaxWidths.push(barWidth - 2);
+      this.hpCurrentTotals.push(totalHp);
+      this.hpMaxTotals.push(maxHp);
+    });
+  }
+
+  /** Animate health bars draining to new values (Worms 2 style) */
+  private onAnimateDamage(state: GameState): void {
+    this.cachedGameState = state;
+    const duration = 800;
+
+    state.players.forEach((player, idx) => {
+      if (idx >= this.hpFills.length) return;
+
+      let newTotalHp = 0;
+      player.worms.forEach((w) => {
+        newTotalHp += w.health;
+      });
+
+      const oldTotal = this.hpCurrentTotals[idx];
+      const maxHp = this.hpMaxTotals[idx];
+      const maxW = this.hpMaxWidths[idx];
+      const fill = this.hpFills[idx];
+      const label = this.hpLabels[idx];
+
+      if (newTotalHp === oldTotal) return;
+
+      // Tween bar width
+      const newWidth = maxHp > 0 ? maxW * (newTotalHp / maxHp) : 0;
+      this.tweens.add({
+        targets: fill,
+        displayWidth: newWidth,
+        duration,
+        ease: "Linear",
+      });
+
+      // Tween label text (count down numbers)
+      const counter = { val: oldTotal };
+      this.tweens.add({
+        targets: counter,
+        val: newTotalHp,
+        duration,
+        ease: "Linear",
+        onUpdate: () => {
+          label.setText(String(Math.round(counter.val)));
+        },
+      });
+
+      this.hpCurrentTotals[idx] = newTotalHp;
     });
   }
 
