@@ -109,7 +109,7 @@ export class TerrainRenderer {
       this.backImage = scene.add.tileSprite(
         TERRAIN_WIDTH / 2,
         TERRAIN_HEIGHT - 159 / 2 - 40,
-        TERRAIN_WIDTH,
+        TERRAIN_WIDTH + 1000,
         159,
         "terrain_back",
       );
@@ -341,6 +341,13 @@ export class TerrainRenderer {
 
   getBitmap(): Uint8Array {
     return this.bitmap;
+  }
+
+  /** Update background parallax based on camera scroll position */
+  updateParallax(camScrollX: number): void {
+    if (this.backImage) {
+      this.backImage.tilePositionX = camScrollX * 0.3;
+    }
   }
 
   eraseCircle(cx: number, cy: number, radius: number): void {

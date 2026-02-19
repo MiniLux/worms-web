@@ -160,152 +160,299 @@ export function generateTerrain(
   theme: TerrainTheme,
 ): TerrainData {
   const rng = mulberry32(seed);
-  const bitmap = new Uint8Array(BITMAP_ROW_BYTES * TERRAIN_HEIGHT);
-  const heightmap: number[] = new Array(TERRAIN_WIDTH);
+  const totalPixels = TERRAIN_WIDTH * TERRAIN_HEIGHT;
 
-  // ── Height profile: dramatic hills + valleys like Worms 2 ──
-  const baseY = TERRAIN_HEIGHT * 0.42;
-  const amplitude = TERRAIN_HEIGHT * 0.35; // ±35% — more dramatic than before
+  // Use a flat boolean-ish byte array for fast manipulation during generation,
+  // then pack into the 1-bit bitmap at the end.
+  const grid = new Uint8Array(totalPixels); // 0=air, 1=solid
 
-  // Pick 1-2 valley positions that dip down near water, creating distinct landmasses
-  const numValleys = 1 + Math.floor(rng() * 2); // 1-2 valleys
-  const valleys: { center: number; width: number; depth: number }[] = [];
-  for (let i = 0; i < numValleys; i++) {
-    valleys.push({
-      center: 0.2 + rng() * 0.6, // normalized [0.2, 0.8]
-      width: 0.05 + rng() * 0.08, // narrow gap
-      depth: 0.7 + rng() * 0.3, // how deep (0.7-1.0, 1.0 = to water)
-    });
-  }
+  const idx = (x: number, y: number) => y * TERRAIN_WIDTH + x;
+  const inBounds = (x: number, y: number) =>
+    x >= 0 && x < TERRAIN_WIDTH && y >= 0 && y < TERRAIN_HEIGHT;
 
-  // Pick 4-8 flat platform spots for worm placement
-  const numPlatforms = 4 + Math.floor(rng() * 5);
-  const platforms: { center: number; width: number }[] = [];
-  for (let i = 0; i < numPlatforms; i++) {
-    platforms.push({
-      center: 0.08 + rng() * 0.84,
-      width: 30 + rng() * 50,
-    });
-  }
+  // ── Step 1: Generate 2D Perlin noise field and threshold ──
+  for (let y = 0; y < TERRAIN_HEIGHT; y++) {
+    for (let x = 0; x < TERRAIN_WIDTH; x++) {
+      const noise = fbm2D(seed, x, y, 5, 0.004);
 
-  for (let x = 0; x < TERRAIN_WIDTH; x++) {
-    const nx = x / TERRAIN_WIDTH; // normalized [0,1]
+      // Vertical bias: more solid toward bottom, less toward top
+      const ny = y / TERRAIN_HEIGHT; // 0=top, 1=bottom
+      const vertBias = (ny - 0.35) * 0.8; // negative above 35%, positive below
 
-    // Organic fbm noise for natural terrain profile
-    const h = fbm1D(seed, x, 6, 0.002);
+      // Edge fade: push threshold up at edges so terrain doesn't touch borders
+      const nx = x / TERRAIN_WIDTH;
+      const edgeX = Math.min(nx * 5, (1 - nx) * 5, 1.0); // fade within 20% of edges
+      const edgeY = Math.min(ny * 4, 1.0); // fade within 25% of top
+      const edgeFade = edgeX * edgeY;
 
-    // Edge fade — terrain tapers off at edges creating an island shape
-    const edgeFade = Math.min(1, nx * 6, (1 - nx) * 6); // sharp taper within ~17% of edges
-    const edgePush = 1 - edgeFade; // 0 in middle, 1 at extreme edges
+      // Water boundary: no terrain at or below water level
+      const waterFade = y >= WATER_LEVEL - 10 ? 0 : 1;
 
-    // Valley cuts — deep notches creating distinct landmasses
-    let valleyMul = 1;
-    for (const v of valleys) {
-      const dist = Math.abs(nx - v.center);
-      if (dist < v.width) {
-        const t = 1 - dist / v.width;
-        const valleyShape = t * t * (3 - 2 * t); // smoothstep
-        valleyMul = Math.min(valleyMul, 1 - valleyShape * v.depth);
-      }
-    }
+      const threshold = -0.02 + (1 - edgeFade) * 0.6;
+      const value = noise + vertBias;
 
-    let surfaceY = baseY + h * amplitude;
-
-    // Apply valley: push surface down toward water
-    if (valleyMul < 1) {
-      surfaceY = surfaceY + (WATER_LEVEL - 5 - surfaceY) * (1 - valleyMul);
-    }
-
-    // Apply edge fade: push surface down toward water at edges
-    if (edgePush > 0) {
-      surfaceY = surfaceY + (WATER_LEVEL - 5 - surfaceY) * edgePush;
-    }
-
-    heightmap[x] = Math.max(
-      30,
-      Math.min(WATER_LEVEL - 10, Math.round(surfaceY)),
-    );
-  }
-
-  // Flatten platform areas gently (blend toward local average)
-  for (const plat of platforms) {
-    const cx = Math.round(plat.center * TERRAIN_WIDTH);
-    const halfW = Math.round(plat.width / 2);
-    const startX = Math.max(0, cx - halfW);
-    const endX = Math.min(TERRAIN_WIDTH - 1, cx + halfW);
-    const midY = heightmap[Math.min(TERRAIN_WIDTH - 1, cx)];
-    for (let x = startX; x <= endX; x++) {
-      const t = 1 - Math.abs(x - cx) / halfW;
-      const blend = t * t * (3 - 2 * t); // smoothstep
-      heightmap[x] = Math.round(
-        heightmap[x] * (1 - blend * 0.7) + midY * blend * 0.7,
-      );
-    }
-  }
-
-  // Fill bitmap: solid below surface, air above
-  for (let x = 0; x < TERRAIN_WIDTH; x++) {
-    const surface = heightmap[x];
-    for (let y = surface; y < WATER_LEVEL; y++) {
-      setBitmapPixel(bitmap, x, y, true);
-    }
-  }
-
-  // ── 2D noise cave system ──
-  // Carve connected tunnels using thresholded fbm2D
-  const caveThreshold = 0.28 + rng() * 0.1; // randomize density per map
-  for (let x = 0; x < TERRAIN_WIDTH; x++) {
-    const surface = heightmap[x];
-    const minCaveY = surface + 25; // don't carve too close to surface
-    for (let y = minCaveY; y < WATER_LEVEL - 15; y++) {
-      const n = fbm2D(seed + 9999, x, y, 4, 0.008);
-      if (n > caveThreshold) {
-        setBitmapPixel(bitmap, x, y, false);
+      if (value > threshold && waterFade > 0) {
+        grid[idx(x, y)] = 1;
       }
     }
   }
 
-  // Supplement with 2-4 random circle caves for variety
-  const numCircleCaves = 2 + Math.floor(rng() * 3);
-  for (let i = 0; i < numCircleCaves; i++) {
-    const cx = Math.floor(rng() * TERRAIN_WIDTH);
-    const surfaceAtCx = heightmap[Math.max(0, Math.min(TERRAIN_WIDTH - 1, cx))];
-    const cy = Math.floor(
-      surfaceAtCx + 30 + rng() * (WATER_LEVEL - surfaceAtCx - 70),
-    );
-    const r = 25 + Math.floor(rng() * 35);
-    carveCircle(bitmap, cx, cy, r);
-  }
-
-  // ── Floating islands above the main terrain ──
-  const numIslands = 3 + Math.floor(rng() * 4); // 3-6 floating islands
-  for (let i = 0; i < numIslands; i++) {
-    const ix = Math.floor(TERRAIN_WIDTH * (0.1 + rng() * 0.8));
-    const mainSurface = heightmap[Math.max(0, Math.min(TERRAIN_WIDTH - 1, ix))];
-    // Place island 40-120px above the main terrain surface
-    const iy = Math.max(30, mainSurface - 40 - Math.floor(rng() * 80));
-    const islandW = 50 + Math.floor(rng() * 80); // 50-130px wide
-    const islandH = 20 + Math.floor(rng() * 20); // 20-40px tall
-
-    // Draw an elliptical island shape with a flat top
-    const halfW = Math.floor(islandW / 2);
-    for (let dx = -halfW; dx <= halfW; dx++) {
-      const px = ix + dx;
-      if (px < 0 || px >= TERRAIN_WIDTH) continue;
-      // Elliptical: height tapers at edges
-      const edgeT = 1 - (dx * dx) / (halfW * halfW);
-      const colH = Math.max(4, Math.floor(islandH * edgeT));
-      // Flat top, rounded bottom
-      for (let dy = 0; dy < colH; dy++) {
-        const py = iy + dy;
-        if (py >= 0 && py < TERRAIN_HEIGHT) {
-          setBitmapPixel(bitmap, px, py, true);
+  // ── Step 2: Flood fill from bottom-center to keep only connected terrain ──
+  // Find a solid seed point near bottom-center
+  let seedX = Math.floor(TERRAIN_WIDTH / 2);
+  let seedY = WATER_LEVEL - 20;
+  // Search for a solid pixel near the seed point
+  let foundSeed = false;
+  for (let r = 0; r < 200 && !foundSeed; r++) {
+    for (let dy = -r; dy <= r && !foundSeed; dy++) {
+      for (let dx = -r; dx <= r && !foundSeed; dx++) {
+        const sx = seedX + dx;
+        const sy = seedY + dy;
+        if (inBounds(sx, sy) && grid[idx(sx, sy)] === 1) {
+          seedX = sx;
+          seedY = sy;
+          foundSeed = true;
         }
       }
     }
   }
 
-  // ── Recalculate heightmap after cave carving and floating islands ──
+  if (foundSeed) {
+    // BFS flood fill to find connected component
+    const visited = new Uint8Array(totalPixels);
+    const queue: number[] = [seedX, seedY];
+    visited[idx(seedX, seedY)] = 1;
+
+    let head = 0;
+    while (head < queue.length) {
+      const qx = queue[head++];
+      const qy = queue[head++];
+
+      const neighbors = [
+        [qx - 1, qy],
+        [qx + 1, qy],
+        [qx, qy - 1],
+        [qx, qy + 1],
+      ];
+      for (const [nx2, ny2] of neighbors) {
+        if (
+          inBounds(nx2, ny2) &&
+          grid[idx(nx2, ny2)] === 1 &&
+          !visited[idx(nx2, ny2)]
+        ) {
+          visited[idx(nx2, ny2)] = 1;
+          queue.push(nx2, ny2);
+        }
+      }
+    }
+
+    // Keep only the connected component
+    for (let i = 0; i < totalPixels; i++) {
+      if (grid[i] === 1 && !visited[i]) {
+        grid[i] = 0;
+      }
+    }
+  }
+
+  // ── Step 3: Morphological close (dilation then erosion) ──
+  // This fills small holes and thin gaps
+  const morphRadius = 4;
+  const dilated = new Uint8Array(totalPixels);
+  const eroded = new Uint8Array(totalPixels);
+
+  // Dilation: expand solid pixels
+  for (let y = 0; y < TERRAIN_HEIGHT; y++) {
+    for (let x = 0; x < TERRAIN_WIDTH; x++) {
+      if (grid[idx(x, y)] === 1) {
+        // Mark all pixels within radius as solid in dilated
+        for (let dy = -morphRadius; dy <= morphRadius; dy++) {
+          for (let dx = -morphRadius; dx <= morphRadius; dx++) {
+            if (dx * dx + dy * dy <= morphRadius * morphRadius) {
+              const nx2 = x + dx;
+              const ny2 = y + dy;
+              if (inBounds(nx2, ny2) && ny2 < WATER_LEVEL) {
+                dilated[idx(nx2, ny2)] = 1;
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // Erosion: shrink back by same radius (on the dilated result)
+  // A pixel survives erosion if ALL pixels within radius are solid in dilated
+  for (let y = 0; y < TERRAIN_HEIGHT; y++) {
+    for (let x = 0; x < TERRAIN_WIDTH; x++) {
+      if (dilated[idx(x, y)] === 0) continue;
+      let allSolid = true;
+      for (let dy = -morphRadius; dy <= morphRadius && allSolid; dy++) {
+        for (let dx = -morphRadius; dx <= morphRadius && allSolid; dx++) {
+          if (dx * dx + dy * dy <= morphRadius * morphRadius) {
+            const nx2 = x + dx;
+            const ny2 = y + dy;
+            if (!inBounds(nx2, ny2) || dilated[idx(nx2, ny2)] === 0) {
+              allSolid = false;
+            }
+          }
+        }
+      }
+      if (allSolid) {
+        eroded[idx(x, y)] = 1;
+      }
+    }
+  }
+
+  // Copy eroded result back to grid
+  grid.set(eroded);
+
+  // ── Step 4: Remove small interior holes ──
+  // Flood fill air from all edges; any air not reached is an interior hole
+  const airVisited = new Uint8Array(totalPixels);
+  const airQueue: number[] = [];
+
+  // Seed from all border pixels that are air
+  for (let x = 0; x < TERRAIN_WIDTH; x++) {
+    if (grid[idx(x, 0)] === 0 && !airVisited[idx(x, 0)]) {
+      airVisited[idx(x, 0)] = 1;
+      airQueue.push(x, 0);
+    }
+    const bottomY = TERRAIN_HEIGHT - 1;
+    if (grid[idx(x, bottomY)] === 0 && !airVisited[idx(x, bottomY)]) {
+      airVisited[idx(x, bottomY)] = 1;
+      airQueue.push(x, bottomY);
+    }
+  }
+  for (let y = 0; y < TERRAIN_HEIGHT; y++) {
+    if (grid[idx(0, y)] === 0 && !airVisited[idx(0, y)]) {
+      airVisited[idx(0, y)] = 1;
+      airQueue.push(0, y);
+    }
+    const rightX = TERRAIN_WIDTH - 1;
+    if (grid[idx(rightX, y)] === 0 && !airVisited[idx(rightX, y)]) {
+      airVisited[idx(rightX, y)] = 1;
+      airQueue.push(rightX, y);
+    }
+  }
+
+  // BFS flood fill air
+  let airHead = 0;
+  while (airHead < airQueue.length) {
+    const ax = airQueue[airHead++];
+    const ay = airQueue[airHead++];
+    const airNeighbors = [
+      [ax - 1, ay],
+      [ax + 1, ay],
+      [ax, ay - 1],
+      [ax, ay + 1],
+    ];
+    for (const [anx, any2] of airNeighbors) {
+      if (
+        inBounds(anx, any2) &&
+        grid[idx(anx, any2)] === 0 &&
+        !airVisited[idx(anx, any2)]
+      ) {
+        airVisited[idx(anx, any2)] = 1;
+        airQueue.push(anx, any2);
+      }
+    }
+  }
+
+  // Fill interior holes (air not reached from outside)
+  for (let y = 0; y < TERRAIN_HEIGHT; y++) {
+    for (let x = 0; x < TERRAIN_WIDTH; x++) {
+      if (grid[idx(x, y)] === 0 && !airVisited[idx(x, y)] && y < WATER_LEVEL) {
+        grid[idx(x, y)] = 1;
+      }
+    }
+  }
+
+  // ── Step 5: Smooth edges (cellular automata smoothing) ──
+  for (let pass = 0; pass < 3; pass++) {
+    const smoothed = new Uint8Array(grid);
+    for (let y = 1; y < TERRAIN_HEIGHT - 1; y++) {
+      for (let x = 1; x < TERRAIN_WIDTH - 1; x++) {
+        // Count solid neighbors in 5x5 window
+        let count = 0;
+        for (let dy = -2; dy <= 2; dy++) {
+          for (let dx = -2; dx <= 2; dx++) {
+            const nx2 = x + dx;
+            const ny2 = y + dy;
+            if (inBounds(nx2, ny2) && grid[idx(nx2, ny2)] === 1) {
+              count++;
+            }
+          }
+        }
+        // 5x5 window has 25 cells
+        if (count >= 13) {
+          smoothed[idx(x, y)] = 1;
+        } else if (count <= 11) {
+          smoothed[idx(x, y)] = 0;
+        }
+        // else keep current value (hysteresis)
+      }
+    }
+    grid.set(smoothed);
+  }
+
+  // ── Step 6: Enforce water boundary and edge margins ──
+  for (let y = WATER_LEVEL; y < TERRAIN_HEIGHT; y++) {
+    for (let x = 0; x < TERRAIN_WIDTH; x++) {
+      grid[idx(x, y)] = 0;
+    }
+  }
+  // Clear small margin at left/right edges
+  const edgeMargin = 20;
+  for (let y = 0; y < TERRAIN_HEIGHT; y++) {
+    for (let x = 0; x < edgeMargin; x++) {
+      grid[idx(x, y)] = 0;
+      grid[idx(TERRAIN_WIDTH - 1 - x, y)] = 0;
+    }
+  }
+
+  // ── Step 7: Add floating islands for gameplay variety ──
+  const numIslands = 2 + Math.floor(rng() * 3); // 2-4 floating islands
+  for (let i = 0; i < numIslands; i++) {
+    const ix = Math.floor(TERRAIN_WIDTH * (0.1 + rng() * 0.8));
+    // Find the main terrain surface at this X
+    let mainSurface = WATER_LEVEL;
+    for (let y = 0; y < TERRAIN_HEIGHT; y++) {
+      if (grid[idx(Math.min(TERRAIN_WIDTH - 1, ix), y)] === 1) {
+        mainSurface = y;
+        break;
+      }
+    }
+    const iy = Math.max(25, mainSurface - 40 - Math.floor(rng() * 80));
+    const islandW = 50 + Math.floor(rng() * 80);
+    const islandH = 20 + Math.floor(rng() * 20);
+    const halfW = Math.floor(islandW / 2);
+    for (let dx = -halfW; dx <= halfW; dx++) {
+      const px = ix + dx;
+      if (px < 0 || px >= TERRAIN_WIDTH) continue;
+      const edgeT = 1 - (dx * dx) / (halfW * halfW);
+      const colH = Math.max(4, Math.floor(islandH * edgeT));
+      for (let dy = 0; dy < colH; dy++) {
+        const py = iy + dy;
+        if (py >= 0 && py < WATER_LEVEL) {
+          grid[idx(px, py)] = 1;
+        }
+      }
+    }
+  }
+
+  // ── Pack into 1-bit bitmap ──
+  const bitmap = new Uint8Array(BITMAP_ROW_BYTES * TERRAIN_HEIGHT);
+  const heightmap: number[] = new Array(TERRAIN_WIDTH);
+
+  for (let y = 0; y < TERRAIN_HEIGHT; y++) {
+    for (let x = 0; x < TERRAIN_WIDTH; x++) {
+      if (grid[idx(x, y)] === 1) {
+        setBitmapPixel(bitmap, x, y, true);
+      }
+    }
+  }
+
+  // Calculate heightmap
   for (let x = 0; x < TERRAIN_WIDTH; x++) {
     let found = false;
     for (let y = 0; y < TERRAIN_HEIGHT; y++) {

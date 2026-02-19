@@ -608,6 +608,9 @@ export class GameScene extends Phaser.Scene {
       }
     }
 
+    // Update background parallax
+    this.terrainRenderer?.updateParallax(this.cameras.main.scrollX);
+
     // Update wind particles
     this.updateWindParticles();
   }
