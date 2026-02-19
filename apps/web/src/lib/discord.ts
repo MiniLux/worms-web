@@ -84,8 +84,7 @@ export async function setupDiscordSdk(): Promise<{
     : `https://cdn.discordapp.com/embed/avatars/${Number(discordUser.id) % 6}.png`;
 
   // Patch global fetch/WebSocket/XHR so they route through Discord's proxy
-  const partyKitHost =
-    process.env.NEXT_PUBLIC_PARTYKIT_HOST ?? "worms-party.minilux.partykit.dev";
+  const partyKitHost = "worms-party.minilux.partykit.dev";
 
   patchUrlMappings(
     [

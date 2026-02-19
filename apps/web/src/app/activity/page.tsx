@@ -49,8 +49,9 @@ export default function ActivityPage() {
   const sdkRef = useRef<DiscordSDK | null>(null);
   const initRef = useRef(false);
 
-  const partyHost =
-    process.env.NEXT_PUBLIC_PARTYKIT_HOST ?? "worms-party.minilux.partykit.dev";
+  // In Discord Activity mode, always use the production PartyKit host
+  // (patchUrlMappings will remap it through Discord's proxy)
+  const partyHost = "worms-party.minilux.partykit.dev";
 
   // Initialize Discord SDK and get participants
   useEffect(() => {
@@ -134,14 +135,29 @@ export default function ActivityPage() {
   const startGame = useCallback(() => {
     if (!localUser || !gameId || players.length < 1) return;
 
-    // Build the game init payload (same structure as lobby)
+    // Build the player list for the init payload
+    const gamePlayers = players.map((p) => ({
+      id: p.id,
+      displayName: p.displayName,
+      avatarUrl: p.avatarUrl,
+      teamColor: p.teamColor,
+    }));
+
+    // Add CPU opponent for solo play (same as lobby server does)
+    if (gamePlayers.length === 1) {
+      const usedColors = gamePlayers.map((p) => p.teamColor);
+      const cpuColor =
+        TEAM_COLORS.find((c) => !usedColors.includes(c)) ?? "blue";
+      gamePlayers.push({
+        id: "cpu-0",
+        displayName: "CPU",
+        avatarUrl: "",
+        teamColor: cpuColor,
+      });
+    }
+
     const payload: GameInitPayload = {
-      players: players.map((p) => ({
-        id: p.id,
-        displayName: p.displayName,
-        avatarUrl: p.avatarUrl,
-        teamColor: p.teamColor,
-      })),
+      players: gamePlayers,
       config: {
         wormsPerTeam: DEFAULT_WORMS_PER_TEAM,
         hp: DEFAULT_HP,
