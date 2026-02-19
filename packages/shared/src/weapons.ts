@@ -46,7 +46,7 @@ export const WEAPON_DEFINITIONS: Record<WeaponId, WeaponDefinition> = {
     damage: 50,
     explosionRadius: 75,
     ammo: -1,
-    affectedByWind: true,
+    affectedByWind: false,
     fuseTime: 3000,
     bounceElasticity: 0.5,
     shotsPerTurn: 1,

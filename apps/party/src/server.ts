@@ -319,6 +319,7 @@ export default class GameServer implements Party.Server {
         );
 
         // Check worm-to-worm collision (block walking through other worms)
+        // Use a tight hitbox (half-width) so worms can move close together
         if (isWalking) {
           let blocked = false;
           for (const op of this.state.players) {
@@ -326,7 +327,7 @@ export default class GameServer implements Party.Server {
               if (!ow.isAlive || ow.id === worm.id) continue;
               const dx = Math.abs(result.x - ow.x);
               const dy = Math.abs(result.y - ow.y);
-              if (dx < WORM_WIDTH && dy < WORM_HEIGHT) {
+              if (dx < WORM_WIDTH * 0.5 && dy < WORM_HEIGHT) {
                 blocked = true;
                 break;
               }

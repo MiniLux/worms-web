@@ -433,9 +433,11 @@ export function computeKnockback(
     return { damage: 0, vx: 0, vy: 0 };
   }
 
-  // Linear falloff: full damage at center, 0 at edge
-  const falloff = 1 - dist / radius;
-  const damage = Math.round(baseDamage * falloff);
+  // Smooth falloff: generous damage even near edges (like original Worms)
+  // Uses square root curve so damage stays high until near the edge
+  const t = dist / radius; // 0 at center, 1 at edge
+  const falloff = 1 - t * t;
+  const damage = Math.max(1, Math.round(baseDamage * falloff));
 
   // Knockback direction: away from explosion center
   const knockbackForce = 200 * falloff * knockbackMultiplier;
