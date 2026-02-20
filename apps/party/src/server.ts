@@ -766,6 +766,11 @@ export default class GameServer implements Party.Server {
     if (this.state.phase !== "playing") return;
     // Cancel the turn timer alarm — player is charging a shot
     this.room.storage.deleteAlarm();
+    // Notify all clients that the active worm is charging
+    this.broadcastAll({
+      type: "CHARGE_START",
+      wormId: this.state.activeWormId,
+    });
   }
 
   private handleSkipTurn(conn: Party.Connection): void {

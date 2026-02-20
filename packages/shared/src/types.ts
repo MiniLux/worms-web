@@ -290,6 +290,7 @@ export type GameServerMessage =
   | { type: "ERROR"; message: string }
   | { type: "WEAPON_SELECTED"; wormId: string; weaponId: WeaponId }
   | { type: "WORM_AIM"; wormId: string; angle: number }
+  | { type: "CHARGE_START"; wormId: string }
   | {
       type: "WORM_WALKING";
       wormId: string;

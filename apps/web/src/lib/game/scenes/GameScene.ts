@@ -62,6 +62,9 @@ export class GameScene extends Phaser.Scene {
   }> = [];
   private pendingDeaths: Array<{ wormId: string; cause: string }> = [];
 
+  // Remote player charge animation
+  private remoteChargeTween: Phaser.Tweens.Tween | null = null;
+
   // Edge-scroll camera
   private readonly EDGE_SCROLL_ZONE = 40; // pixels from screen edge
   private readonly EDGE_SCROLL_SPEED = 500; // px/s
@@ -775,12 +778,18 @@ export class GameScene extends Phaser.Scene {
         this.onWormFellInWater(msg);
         break;
       case "FIRE_RESULT":
+        this.stopRemoteCharge();
+        this.getActiveWorm()?.hidePowerGauge();
         this.onFireResult(msg);
         break;
       case "HITSCAN_RESULT":
+        this.stopRemoteCharge();
+        this.getActiveWorm()?.hidePowerGauge();
         this.onHitscanResult(msg);
         break;
       case "MELEE_RESULT":
+        this.stopRemoteCharge();
+        this.getActiveWorm()?.hidePowerGauge();
         this.onMeleeResult(msg);
         break;
       case "TELEPORT_RESULT":
@@ -821,6 +830,7 @@ export class GameScene extends Phaser.Scene {
         this.isAiming = false;
         this.isCharging = false;
         this.aimLocked = false;
+        this.stopRemoteCharge();
         this.getActiveWorm()?.hideAimLine();
         this.getActiveWorm()?.hidePowerGauge();
         this.hideTeleportCursor();
@@ -834,6 +844,7 @@ export class GameScene extends Phaser.Scene {
         this.aimLocked = false;
         this.isMovingLeft = false;
         this.isMovingRight = false;
+        this.stopRemoteCharge();
         this.getActiveWorm()?.hidePowerGauge();
         this.hideTeleportCursor();
         // Safety net: flush any remaining deferred damages
@@ -857,6 +868,9 @@ export class GameScene extends Phaser.Scene {
         break;
       case "WORM_WALKING":
         this.onWormWalking(msg);
+        break;
+      case "CHARGE_START":
+        this.onRemoteChargeStart(msg);
         break;
       case "WORM_DEATH_EXPLOSION":
         this.onDeathExplosion(msg);
@@ -1271,15 +1285,19 @@ export class GameScene extends Phaser.Scene {
     // Only apply to remote worms (our own worm is already handled locally)
     if (this.isMyTurn) return;
     const entity = this.wormEntities.get(msg.wormId);
-    entity?.setWeaponHold(msg.weaponId);
+    if (entity) {
+      entity.hideArrow();
+      entity.setWeaponHold(msg.weaponId);
+    }
   }
 
   private onWormAim(msg: { wormId: string; angle: number }): void {
     if (this.isMyTurn) return;
     const entity = this.wormEntities.get(msg.wormId);
     if (entity) {
+      entity.hideArrow();
       entity.setAimAngle(msg.angle);
-      entity.showAimLine(msg.angle, 0);
+      // Don't show crosshair/aim line for opponent — just update internal angle
     }
   }
 
@@ -1287,7 +1305,36 @@ export class GameScene extends Phaser.Scene {
     // Only apply to remote worms (our own worm is already handled locally)
     if (this.isMyTurn) return;
     const entity = this.wormEntities.get(msg.wormId);
-    entity?.setWalking(msg.isWalking);
+    if (entity) {
+      entity.hideArrow();
+      entity.setWalking(msg.isWalking);
+    }
+  }
+
+  private onRemoteChargeStart(msg: { wormId: string }): void {
+    if (this.isMyTurn) return;
+    const entity = this.wormEntities.get(msg.wormId);
+    if (!entity) return;
+
+    // Animate the power gauge from 0 to 1 over CHARGE_DURATION_MS
+    this.stopRemoteCharge();
+    const progress = { value: 0 };
+    this.remoteChargeTween = this.tweens.add({
+      targets: progress,
+      value: 1,
+      duration: this.CHARGE_DURATION_MS,
+      ease: "Linear",
+      onUpdate: () => {
+        entity.updatePowerGauge(progress.value);
+      },
+    });
+  }
+
+  private stopRemoteCharge(): void {
+    if (this.remoteChargeTween) {
+      this.remoteChargeTween.stop();
+      this.remoteChargeTween = null;
+    }
   }
 
   // ─── Projectile Animation ───────────────────────────────
