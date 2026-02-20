@@ -517,18 +517,24 @@ export default class GameServer implements Party.Server {
     } else {
       this.readyPlayers.delete(playerId);
     }
-    this.broadcastAll({
-      type: "ACTIVITY_SYNC",
-      readyPlayers: [...this.readyPlayers],
-    });
+    // Use room.broadcast — players haven't JOIN_GAME'd yet so they're
+    // not in playerConnections; room.broadcast reaches ALL websocket clients
+    this.room.broadcast(
+      JSON.stringify({
+        type: "ACTIVITY_SYNC",
+        readyPlayers: [...this.readyPlayers],
+      } satisfies GameServerMessage),
+    );
   }
 
   private handleActivityStart(payload: GameInitPayload): void {
     // Broadcast to all connected clients so they can transition to game
-    this.broadcastAll({
-      type: "ACTIVITY_GAME_STARTING",
-      payload,
-    });
+    this.room.broadcast(
+      JSON.stringify({
+        type: "ACTIVITY_GAME_STARTING",
+        payload,
+      } satisfies GameServerMessage),
+    );
   }
 
   private handleInitGame(
