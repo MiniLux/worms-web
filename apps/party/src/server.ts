@@ -53,6 +53,9 @@ export default class GameServer implements Party.Server {
   // Wait for all worm physics to settle before checking game over
   private waitingForPhysicsSettle: boolean = false;
 
+  // Activity waiting room: ready state tracking
+  private readyPlayers: Set<string> = new Set();
+
   constructor(readonly room: Party.Room) {}
 
   // ─── HTTP: Game Initialization ─────────────────────────
@@ -107,13 +110,19 @@ export default class GameServer implements Party.Server {
       return;
     }
 
-    // INIT_GAME and JOIN_GAME must work before state exists
+    // INIT_GAME, JOIN_GAME, and activity signaling must work before state exists
     switch (msg.type) {
       case "INIT_GAME":
         this.handleInitGame(msg.payload, sender);
         return;
       case "JOIN_GAME":
         this.handleJoinGame(msg.playerId, sender);
+        return;
+      case "ACTIVITY_READY":
+        this.handleActivityReady(msg.playerId, msg.ready);
+        return;
+      case "ACTIVITY_START":
+        this.handleActivityStart(msg.payload);
         return;
     }
 
@@ -498,6 +507,28 @@ export default class GameServer implements Party.Server {
         this.checkCpuTurn();
       }
     }, 1500);
+  }
+
+  // ─── Activity Waiting Room ─────────────────────────────
+
+  private handleActivityReady(playerId: string, ready: boolean): void {
+    if (ready) {
+      this.readyPlayers.add(playerId);
+    } else {
+      this.readyPlayers.delete(playerId);
+    }
+    this.broadcastAll({
+      type: "ACTIVITY_SYNC",
+      readyPlayers: [...this.readyPlayers],
+    });
+  }
+
+  private handleActivityStart(payload: GameInitPayload): void {
+    // Broadcast to all connected clients so they can transition to game
+    this.broadcastAll({
+      type: "ACTIVITY_GAME_STARTING",
+      payload,
+    });
   }
 
   private handleInitGame(

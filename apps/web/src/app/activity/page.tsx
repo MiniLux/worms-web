@@ -2,9 +2,14 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import dynamic from "next/dynamic";
+import PartySocket from "partysocket";
 import { setupDiscordSdk, type DiscordUser } from "@/lib/discord";
 import type { DiscordSDK } from "@discord/embedded-app-sdk";
-import type { GameInitPayload, TeamColor } from "@worms/shared";
+import type {
+  GameInitPayload,
+  GameServerMessage,
+  TeamColor,
+} from "@worms/shared";
 import {
   DEFAULT_HP,
   DEFAULT_WORMS_PER_TEAM,
@@ -39,6 +44,10 @@ interface Player {
 
 type Phase = "loading" | "waiting" | "playing";
 
+// In Discord Activity mode, always use the production PartyKit host
+// (patchUrlMappings will remap it through Discord's proxy)
+const PARTY_HOST = "worms-party.minilux.partykit.dev";
+
 export default function ActivityPage() {
   const [phase, setPhase] = useState<Phase>("loading");
   const [status, setStatus] = useState("Connecting to Discord...");
@@ -46,6 +55,8 @@ export default function ActivityPage() {
   const [players, setPlayers] = useState<Player[]>([]);
   const [localUser, setLocalUser] = useState<DiscordUser | null>(null);
   const [gameId, setGameId] = useState<string | null>(null);
+  const [readyPlayers, setReadyPlayers] = useState<Set<string>>(new Set());
+  const [isReady, setIsReady] = useState(false);
   const [wormNames, setWormNames] = useState<string[]>(() => {
     if (typeof window === "undefined") return [];
     try {
@@ -57,10 +68,7 @@ export default function ActivityPage() {
   const [showTeamSettings, setShowTeamSettings] = useState(false);
   const sdkRef = useRef<DiscordSDK | null>(null);
   const initRef = useRef(false);
-
-  // In Discord Activity mode, always use the production PartyKit host
-  // (patchUrlMappings will remap it through Discord's proxy)
-  const partyHost = "worms-party.minilux.partykit.dev";
+  const socketRef = useRef<PartySocket | null>(null);
 
   // Initialize Discord SDK and get participants
   useEffect(() => {
@@ -101,6 +109,30 @@ export default function ActivityPage() {
 
         setPlayers(playerList);
         setPhase("waiting");
+
+        // Connect to PartyKit game room for signaling
+        const sock = new PartySocket({
+          host: PARTY_HOST,
+          room: roomId,
+          party: "game",
+        });
+
+        sock.addEventListener("message", (e: MessageEvent) => {
+          const msg = JSON.parse(e.data as string) as GameServerMessage;
+          if (msg.type === "ACTIVITY_SYNC") {
+            setReadyPlayers(new Set(msg.readyPlayers));
+          } else if (msg.type === "ACTIVITY_GAME_STARTING") {
+            // All players receive this — store payload and transition
+            sessionStorage.setItem(
+              "gameInitPayload",
+              JSON.stringify(msg.payload),
+            );
+            sock.close();
+            setPhase("playing");
+          }
+        });
+
+        socketRef.current = sock;
 
         // Listen for participants joining/leaving
         sdk.subscribe(
@@ -150,12 +182,25 @@ export default function ActivityPage() {
     });
   }, []);
 
-  // Start the game — build the init payload and transition to game phase
-  const startGame = useCallback(() => {
-    if (!localUser || !gameId || players.length < 1) return;
+  // Toggle ready state
+  const toggleReady = useCallback(() => {
+    if (!localUser || !socketRef.current) return;
+    const newReady = !isReady;
+    setIsReady(newReady);
+    socketRef.current.send(
+      JSON.stringify({
+        type: "ACTIVITY_READY",
+        playerId: localUser.playerId,
+        ready: newReady,
+      }),
+    );
+  }, [localUser, isReady]);
 
-    // Build the player list for the init payload
-    // Only the local user gets custom worm names
+  // Start the game (host only) — broadcast to all via PartyKit
+  const startGame = useCallback(() => {
+    if (!localUser || !gameId || !socketRef.current || players.length < 1)
+      return;
+
     const gamePlayers = players.map((p) => ({
       id: p.id,
       displayName: p.displayName,
@@ -164,7 +209,7 @@ export default function ActivityPage() {
       wormNames: p.id === localUser.playerId ? wormNames : undefined,
     }));
 
-    // Add CPU opponent for solo play (same as lobby server does)
+    // Add CPU opponent for solo play
     if (gamePlayers.length === 1) {
       const usedColors = gamePlayers.map((p) => p.teamColor);
       const cpuColor =
@@ -188,14 +233,17 @@ export default function ActivityPage() {
       },
     };
 
-    // Store in sessionStorage so GameScene can send it via INIT_GAME
-    sessionStorage.setItem("gameInitPayload", JSON.stringify(payload));
-    setPhase("playing");
+    // Send to server — it will broadcast ACTIVITY_GAME_STARTING to all
+    socketRef.current.send(JSON.stringify({ type: "ACTIVITY_START", payload }));
   }, [localUser, gameId, players, wormNames]);
 
   // Determine if current user is "host" (first in participant list)
   const isHost =
     localUser && players.length > 0 && players[0].id === localUser.playerId;
+
+  // For multiplayer: all players must be ready. For solo: no ready check needed.
+  const isSolo = players.length < 2;
+  const allReady = isSolo || players.every((p) => readyPlayers.has(p.id));
 
   // ─── Render ──────────────────────────────────────────────
 
@@ -226,7 +274,7 @@ export default function ActivityPage() {
         <PhaserGame
           gameId={gameId}
           playerId={localUser.playerId}
-          partyHost={partyHost}
+          partyHost={PARTY_HOST}
         />
       </div>
     );
@@ -262,9 +310,19 @@ export default function ActivityPage() {
               >
                 {p.displayName}
               </span>
-              {p.id === localUser?.playerId && (
-                <span className="text-xs text-gray-500 ml-auto">(you)</span>
-              )}
+              <span
+                className={`text-xs font-medium ml-auto ${
+                  readyPlayers.has(p.id) ? "text-green-400" : "text-gray-500"
+                }`}
+              >
+                {p.id === localUser?.playerId
+                  ? isReady
+                    ? "Ready"
+                    : "(you)"
+                  : readyPlayers.has(p.id)
+                    ? "Ready"
+                    : "Not ready"}
+              </span>
             </div>
           ))}
         </div>
@@ -301,19 +359,37 @@ export default function ActivityPage() {
           )}
         </div>
 
-        {isHost ? (
-          <button
-            onClick={startGame}
-            disabled={players.length < 1}
-            className="w-full bg-amber-600 hover:bg-amber-500 disabled:bg-gray-700 disabled:text-gray-500 text-white font-bold py-3 px-6 rounded-lg text-lg transition-colors"
-          >
-            {players.length < 2 ? "Start Solo (vs CPU)" : "Start Game"}
-          </button>
-        ) : (
-          <p className="text-center text-gray-500 text-sm">
-            Waiting for host to start the game...
-          </p>
-        )}
+        <div className="flex gap-3">
+          {!isSolo && (
+            <button
+              onClick={toggleReady}
+              className={`flex-1 py-3 rounded-lg font-bold transition-colors ${
+                isReady
+                  ? "bg-gray-700 hover:bg-gray-600 text-gray-300"
+                  : "bg-green-600 hover:bg-green-500 text-white"
+              }`}
+            >
+              {isReady ? "Unready" : "Ready"}
+            </button>
+          )}
+          {isHost ? (
+            <button
+              onClick={startGame}
+              disabled={!allReady}
+              className={`flex-1 py-3 rounded-lg font-bold text-lg transition-colors ${
+                allReady
+                  ? "bg-amber-600 hover:bg-amber-500 text-white"
+                  : "bg-gray-700 text-gray-500 cursor-not-allowed"
+              }`}
+            >
+              {isSolo ? "Start Solo (vs CPU)" : "Start Game"}
+            </button>
+          ) : (
+            <p className="flex-1 text-center text-gray-500 text-sm self-center">
+              Waiting for host to start...
+            </p>
+          )}
+        </div>
       </div>
     </div>
   );

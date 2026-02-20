@@ -149,7 +149,10 @@ export type GameClientMessage =
   | { type: "PAUSE_TIMER" }
   | { type: "APPLY_KNOCKBACK" }
   | { type: "AIM"; angle: number }
-  | { type: "CHAT"; text: string };
+  | { type: "CHAT"; text: string }
+  // Activity waiting room signaling
+  | { type: "ACTIVITY_READY"; playerId: string; ready: boolean }
+  | { type: "ACTIVITY_START"; payload: GameInitPayload };
 
 // ─── Server → Client Messages ───────────────────────────
 
@@ -296,7 +299,10 @@ export type GameServerMessage =
       terrainDestruction: TerrainDestructionEvent[];
       damages: DamageEvent[];
       deaths: WormDeathEvent[];
-    };
+    }
+  // Activity waiting room signaling
+  | { type: "ACTIVITY_SYNC"; readyPlayers: string[] }
+  | { type: "ACTIVITY_GAME_STARTING"; payload: GameInitPayload };
 
 // ─── Game Init (Lobby → Game server handoff) ────────────
 
