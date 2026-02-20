@@ -5,12 +5,10 @@ import { GameScene } from "./GameScene";
 
 export class HUDScene extends Phaser.Scene {
   private timerText!: Phaser.GameObjects.Text;
-  private turnText!: Phaser.GameObjects.Text;
   private weaponButtons: Phaser.GameObjects.Container[] = [];
   private playerPanels: Phaser.GameObjects.Container[] = [];
   // Tracked references for animated health drain
   private hpFills: Phaser.GameObjects.Rectangle[] = [];
-  private hpLabels: Phaser.GameObjects.Text[] = [];
   private hpMaxWidths: number[] = [];
   private hpCurrentTotals: number[] = [];
   private hpMaxTotals: number[] = [];
@@ -52,18 +50,6 @@ export class HUDScene extends Phaser.Scene {
         strokeThickness: 3,
       })
       .setOrigin(0, 1)
-      .setDepth(20);
-
-    // Turn indicator (top-left)
-    this.turnText = this.add
-      .text(16, 16, "", {
-        fontSize: "12px",
-        fontFamily: "monospace",
-        color: "#ffffff",
-        stroke: "#000000",
-        strokeThickness: 2,
-      })
-      .setOrigin(0, 0)
       .setDepth(20);
 
     // Wind display (bottom-right corner)
@@ -250,7 +236,6 @@ export class HUDScene extends Phaser.Scene {
     this.timeRemaining = state.turnTimeRemaining;
     this.timerText.setText(String(this.timeRemaining));
     this.updateWind(state.wind);
-    this.updateTurnText(state.activePlayerId === this.playerId);
     this.updatePlayerPanels(state);
 
     // Show turn banner on initial sync
@@ -268,9 +253,6 @@ export class HUDScene extends Phaser.Scene {
     this.timerText.setText(String(this.timeRemaining));
     this.timerText.setColor("#ffcc00");
     this.updateWind(msg.wind);
-
-    const isMyTurn = msg.activePlayerId === this.playerId;
-    this.updateTurnText(isMyTurn);
 
     // Show turn banner with active worm name
     if (this.cachedGameState) {
@@ -487,11 +469,6 @@ export class HUDScene extends Phaser.Scene {
 
   // ─── UI Drawing ─────────────────────────────────────────
 
-  private updateTurnText(isMyTurn: boolean): void {
-    this.turnText.setText(isMyTurn ? "YOUR TURN" : "Opponent's turn");
-    this.turnText.setColor(isMyTurn ? "#22c55e" : "#999999");
-  }
-
   private createWeaponBar(): void {
     const { width, height } = this.cameras.main;
     const btnSize = 48;
@@ -557,7 +534,6 @@ export class HUDScene extends Phaser.Scene {
     this.playerPanels.forEach((p) => p.destroy());
     this.playerPanels = [];
     this.hpFills = [];
-    this.hpLabels = [];
     this.hpMaxWidths = [];
     this.hpCurrentTotals = [];
     this.hpMaxTotals = [];
@@ -609,24 +585,12 @@ export class HUDScene extends Phaser.Scene {
         .rectangle(1, 1, fillWidth, barHeight - 2, teamColor)
         .setOrigin(0, 0);
 
-      // HP text on bar
-      const hpLabel = this.add
-        .text(barWidth / 2, barHeight / 2, `${totalHp}`, {
-          fontSize: "8px",
-          fontFamily: "monospace",
-          color: "#ffffff",
-          stroke: "#000000",
-          strokeThickness: 1,
-        })
-        .setOrigin(0.5, 0.5);
-
-      container.add([hpBg, hpFill, name, hpLabel]);
+      container.add([hpBg, hpFill, name]);
       container.setDepth(20);
       this.playerPanels.push(container);
 
       // Track references for animated drain
       this.hpFills.push(hpFill);
-      this.hpLabels.push(hpLabel);
       this.hpMaxWidths.push(barWidth - 2);
       this.hpCurrentTotals.push(totalHp);
       this.hpMaxTotals.push(maxHp);
@@ -650,7 +614,6 @@ export class HUDScene extends Phaser.Scene {
       const maxHp = this.hpMaxTotals[idx];
       const maxW = this.hpMaxWidths[idx];
       const fill = this.hpFills[idx];
-      const label = this.hpLabels[idx];
 
       if (newTotalHp === oldTotal) return;
 
@@ -661,18 +624,6 @@ export class HUDScene extends Phaser.Scene {
         displayWidth: newWidth,
         duration,
         ease: "Linear",
-      });
-
-      // Tween label text (count down numbers)
-      const counter = { val: oldTotal };
-      this.tweens.add({
-        targets: counter,
-        val: newTotalHp,
-        duration,
-        ease: "Linear",
-        onUpdate: () => {
-          label.setText(String(Math.round(counter.val)));
-        },
       });
 
       this.hpCurrentTotals[idx] = newTotalHp;
