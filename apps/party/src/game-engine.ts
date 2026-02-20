@@ -585,6 +585,12 @@ export function processMelee(
     }
   }
 
+  // Fire punch: punching worm jumps up slightly (like original Worms)
+  if (weaponId === "fire_punch") {
+    worm.vy = -120;
+    worm.vx += meleeDir * 30;
+  }
+
   // Don't set phase to retreat here — the server waits for physics to settle first
 
   return [{ type: "MELEE_RESULT", weaponId, damages, deaths }];

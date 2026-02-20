@@ -84,6 +84,7 @@ export class WormEntity {
   private jumpAnimPlaying: boolean = false;
   private isJumping: boolean = false; // true from jump until landing (voluntary jump, not knockback)
   private drawAnimPlaying: boolean = false;
+  private fireAnimPlaying: boolean = false;
   private powerGauge: Phaser.GameObjects.Graphics;
   private powerValue: number = 0;
   private showPowerGauge: boolean = false;
@@ -606,9 +607,11 @@ export class WormEntity {
     if (!fireTexture || !hasSpritesheet(this.scene, fireTexture)) return;
 
     // Show the fire sprite at current aim frame briefly
+    this.fireAnimPlaying = true;
     this.applyWeaponAimFrame(fireTexture);
     // Return to normal aim after a short delay
     this.scene.time.delayedCall(300, () => {
+      this.fireAnimPlaying = false;
       this.isShowingWeaponFrame = false;
       this.currentAnim = "";
     });
@@ -927,6 +930,9 @@ export class WormEntity {
 
     // Weapon draw animation takes priority
     if (this.drawAnimPlaying) return;
+
+    // Fire animation frame takes priority (e.g. shotgun recoil)
+    if (this.fireAnimPlaying) return;
 
     // Airborne: use fall anim for voluntary jumps, fly anim for knockback
     const airborne =
