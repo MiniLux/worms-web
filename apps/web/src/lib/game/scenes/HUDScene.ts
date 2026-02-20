@@ -1,6 +1,7 @@
 import * as Phaser from "phaser";
 import type { GameState, WeaponId } from "@worms/shared";
 import { WEAPON_DEFINITIONS, MVP_WEAPON_IDS } from "@worms/shared";
+import { isDiscordActivity } from "@/lib/discord";
 import { GameScene } from "./GameScene";
 
 export class HUDScene extends Phaser.Scene {
@@ -355,19 +356,25 @@ export class HUDScene extends Phaser.Scene {
       })
       .setOrigin(0.5);
 
+    const inActivity = isDiscordActivity();
     const backBtn = this.add
-      .text(width / 2, height / 2 + 50, "[ Back to Dashboard ]", {
-        fontSize: "14px",
-        fontFamily: "monospace",
-        color: "#ffffff",
-        backgroundColor: "#333333",
-        padding: { x: 16, y: 8 },
-      })
+      .text(
+        width / 2,
+        height / 2 + 50,
+        inActivity ? "[ Back to Lobby ]" : "[ Back to Dashboard ]",
+        {
+          fontSize: "14px",
+          fontFamily: "monospace",
+          color: "#ffffff",
+          backgroundColor: "#333333",
+          padding: { x: 16, y: 8 },
+        },
+      )
       .setOrigin(0.5)
       .setInteractive({ useHandCursor: true });
 
     backBtn.on("pointerdown", () => {
-      window.location.href = "/dashboard";
+      window.location.href = inActivity ? "/activity" : "/dashboard";
     });
     backBtn.on("pointerover", () => backBtn.setColor("#ffcc00"));
     backBtn.on("pointerout", () => backBtn.setColor("#ffffff"));

@@ -291,9 +291,11 @@ export default function ActivityPage() {
   return (
     <div className="w-screen h-screen bg-black flex items-center justify-center">
       <div className="max-w-md w-full space-y-6 p-6">
-        <h1 className="text-2xl font-bold text-amber-400 text-center">
-          Worms: Le Parking
-        </h1>
+        <img
+          src="/logo.png"
+          alt="Worms: Le Parking"
+          className="mx-auto h-24 w-auto"
+        />
 
         <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 space-y-3">
           <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">
