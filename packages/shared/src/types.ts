@@ -151,7 +151,12 @@ export type GameClientMessage =
   | { type: "AIM"; angle: number }
   | { type: "CHAT"; text: string }
   // Activity waiting room signaling
-  | { type: "ACTIVITY_READY"; playerId: string; ready: boolean }
+  | {
+      type: "ACTIVITY_READY";
+      playerId: string;
+      ready: boolean;
+      wormNames?: string[];
+    }
   | { type: "ACTIVITY_START"; payload: GameInitPayload };
 
 // ─── Server → Client Messages ───────────────────────────
@@ -301,7 +306,11 @@ export type GameServerMessage =
       deaths: WormDeathEvent[];
     }
   // Activity waiting room signaling
-  | { type: "ACTIVITY_SYNC"; readyPlayers: string[] }
+  | {
+      type: "ACTIVITY_SYNC";
+      readyPlayers: string[];
+      playerWormNames: Record<string, string[]>;
+    }
   | { type: "ACTIVITY_GAME_STARTING"; payload: GameInitPayload };
 
 // ─── Game Init (Lobby → Game server handoff) ────────────

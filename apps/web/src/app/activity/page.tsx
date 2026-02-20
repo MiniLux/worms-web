@@ -57,6 +57,9 @@ export default function ActivityPage() {
   const [gameId, setGameId] = useState<string | null>(null);
   const [readyPlayers, setReadyPlayers] = useState<Set<string>>(new Set());
   const [isReady, setIsReady] = useState(false);
+  const [allPlayerWormNames, setAllPlayerWormNames] = useState<
+    Record<string, string[]>
+  >({});
   const [wormNames, setWormNames] = useState<string[]>(() => {
     if (typeof window === "undefined") return [];
     try {
@@ -121,6 +124,7 @@ export default function ActivityPage() {
           const msg = JSON.parse(e.data as string) as GameServerMessage;
           if (msg.type === "ACTIVITY_SYNC") {
             setReadyPlayers(new Set(msg.readyPlayers));
+            setAllPlayerWormNames(msg.playerWormNames);
           } else if (msg.type === "ACTIVITY_GAME_STARTING") {
             // All players receive this — store payload and transition
             sessionStorage.setItem(
@@ -192,9 +196,10 @@ export default function ActivityPage() {
         type: "ACTIVITY_READY",
         playerId: localUser.playerId,
         ready: newReady,
+        wormNames: wormNames.length > 0 ? wormNames : undefined,
       }),
     );
-  }, [localUser, isReady]);
+  }, [localUser, isReady, wormNames]);
 
   // Start the game (host only) — broadcast to all via PartyKit
   const startGame = useCallback(() => {
@@ -206,7 +211,9 @@ export default function ActivityPage() {
       displayName: p.displayName,
       avatarUrl: p.avatarUrl,
       teamColor: p.teamColor,
-      wormNames: p.id === localUser.playerId ? wormNames : undefined,
+      wormNames:
+        allPlayerWormNames[p.id] ??
+        (p.id === localUser.playerId ? wormNames : undefined),
     }));
 
     // Add CPU opponent for solo play
@@ -235,7 +242,7 @@ export default function ActivityPage() {
 
     // Send to server — it will broadcast ACTIVITY_GAME_STARTING to all
     socketRef.current.send(JSON.stringify({ type: "ACTIVITY_START", payload }));
-  }, [localUser, gameId, players, wormNames]);
+  }, [localUser, gameId, players, wormNames, allPlayerWormNames]);
 
   // Determine if current user is "host" (first in participant list)
   const isHost =

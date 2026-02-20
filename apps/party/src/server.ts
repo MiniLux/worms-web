@@ -55,6 +55,7 @@ export default class GameServer implements Party.Server {
 
   // Activity waiting room: ready state tracking
   private readyPlayers: Set<string> = new Set();
+  private playerWormNames: Map<string, string[]> = new Map();
 
   constructor(readonly room: Party.Room) {}
 
@@ -119,7 +120,7 @@ export default class GameServer implements Party.Server {
         this.handleJoinGame(msg.playerId, sender);
         return;
       case "ACTIVITY_READY":
-        this.handleActivityReady(msg.playerId, msg.ready);
+        this.handleActivityReady(msg.playerId, msg.ready, msg.wormNames);
         return;
       case "ACTIVITY_START":
         this.handleActivityStart(msg.payload);
@@ -511,11 +512,18 @@ export default class GameServer implements Party.Server {
 
   // ─── Activity Waiting Room ─────────────────────────────
 
-  private handleActivityReady(playerId: string, ready: boolean): void {
+  private handleActivityReady(
+    playerId: string,
+    ready: boolean,
+    wormNames?: string[],
+  ): void {
     if (ready) {
       this.readyPlayers.add(playerId);
     } else {
       this.readyPlayers.delete(playerId);
+    }
+    if (wormNames && wormNames.length > 0) {
+      this.playerWormNames.set(playerId, wormNames);
     }
     // Use room.broadcast — players haven't JOIN_GAME'd yet so they're
     // not in playerConnections; room.broadcast reaches ALL websocket clients
@@ -523,6 +531,7 @@ export default class GameServer implements Party.Server {
       JSON.stringify({
         type: "ACTIVITY_SYNC",
         readyPlayers: [...this.readyPlayers],
+        playerWormNames: Object.fromEntries(this.playerWormNames),
       } satisfies GameServerMessage),
     );
   }
