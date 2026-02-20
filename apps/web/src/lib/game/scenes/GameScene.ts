@@ -139,6 +139,7 @@ export class GameScene extends Phaser.Scene {
       worm_fist: { file: "wfist.png" },
       worm_firblast: { file: "wfirbl1.png" },
       worm_bndlnk: { file: "wbndlnk.png" },
+      worm_bndbak: { file: "wbndbak.png" },
       worm_pnclnk: { file: "wpnclnk.png" },
       worm_pnctop: { file: "wpnctop.png" },
       // Jump flying up
@@ -903,17 +904,23 @@ export class GameScene extends Phaser.Scene {
         }
         break;
       }
-      case "RETREAT_START":
+      case "RETREAT_START": {
         this.isAiming = false;
         this.isCharging = false;
         this.aimLocked = false;
         this.stopRemoteCharge();
-        this.getActiveWorm()?.hideAimLine();
-        this.getActiveWorm()?.hidePowerGauge();
+        const retreatWorm = this.getActiveWorm();
+        retreatWorm?.hideAimLine();
+        retreatWorm?.hidePowerGauge();
         this.hideTeleportCursor();
+        // Play fire punch landing animation
+        if (this.selectedWeapon === "fire_punch") {
+          retreatWorm?.playPunchLandingAnim();
+        }
         // Worms 2 style: show all deferred damage now that knockback has settled
         this.flushPendingDamages();
         break;
+      }
       case "TURN_END":
         this.isMyTurn = false;
         this.isAiming = false;

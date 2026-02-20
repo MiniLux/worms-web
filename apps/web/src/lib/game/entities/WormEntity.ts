@@ -60,7 +60,7 @@ const WEAPON_PUTAWAY_SPRITES: Record<
   bazooka: { texture: "worm_bazlnk", frames: 7, reverse: true },
   grenade: { texture: "worm_grnbak", frames: 10, reverse: false },
   teleport: { texture: "worm_telbak", frames: 10, reverse: false },
-  fire_punch: { texture: "worm_bndlnk", frames: 26, reverse: true },
+  fire_punch: { texture: "worm_bndbak", frames: 26, reverse: false },
 };
 
 export class WormEntity {
@@ -270,6 +270,14 @@ export class WormEntity {
         end: 8,
         rate: 30,
         repeat: -1,
+        yoyo: true,
+      },
+      {
+        key: "worm_bndbak",
+        texture: "worm_bndbak",
+        end: 25,
+        rate: 30,
+        repeat: 0,
       },
       { key: "worm_fist", texture: "worm_fist", end: 16, rate: 30, repeat: 0 },
       {
@@ -588,6 +596,19 @@ export class WormEntity {
       } else {
         resolve();
       }
+    });
+  }
+
+  /** Play fire punch landing animation (wbndbak) after worm lands */
+  playPunchLandingAnim(): void {
+    if (!this.sprite || !this.scene.anims.exists("worm_bndbak")) return;
+    this.overrideAnim = "worm_bndbak";
+    this.currentAnim = "";
+    this.isShowingWeaponFrame = false;
+    this.sprite.play("worm_bndbak");
+    this.sprite.once("animationcomplete", () => {
+      this.overrideAnim = null;
+      this.currentAnim = "";
     });
   }
 
@@ -926,11 +947,12 @@ export class WormEntity {
   private updateAnimationState(): void {
     if (!this.usesSprites || !this.sprite || this.isDead) return;
 
-    // Override animation (e.g. punch anim playing)
+    // Override animation (e.g. punch anim playing, landing anim)
     if (
       this.overrideAnim === "worm_fist" ||
       this.overrideAnim === "worm_pnclnk" ||
-      this.overrideAnim === "worm_pnctop"
+      this.overrideAnim === "worm_pnctop" ||
+      this.overrideAnim === "worm_bndbak"
     )
       return;
 
