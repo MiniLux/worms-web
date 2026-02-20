@@ -41,7 +41,7 @@ const WEAPON_DRAW_SPRITES: Record<string, { texture: string; frames: number }> =
     bazooka: { texture: "worm_bazlnk", frames: 7 },
     grenade: { texture: "worm_grnlnk", frames: 10 },
     teleport: { texture: "worm_tellnk", frames: 10 },
-    fire_punch: { texture: "worm_japbak", frames: 9 },
+    fire_punch: { texture: "worm_bndlnk", frames: 26 },
   };
 
 /** Weapon fire animation (played once on firing) */
@@ -60,7 +60,7 @@ const WEAPON_PUTAWAY_SPRITES: Record<
   bazooka: { texture: "worm_bazlnk", frames: 7, reverse: true },
   grenade: { texture: "worm_grnbak", frames: 10, reverse: false },
   teleport: { texture: "worm_telbak", frames: 10, reverse: false },
-  fire_punch: { texture: "worm_japbak", frames: 9, reverse: true },
+  fire_punch: { texture: "worm_bndlnk", frames: 26, reverse: true },
 };
 
 export class WormEntity {
@@ -276,6 +276,29 @@ export class WormEntity {
         end: 23,
         rate: 30,
         repeat: 0,
+      },
+      // Punch wind-up and punch strike
+      {
+        key: "worm_pnclnk",
+        texture: "worm_pnclnk",
+        end: 8,
+        rate: 30,
+        repeat: 0,
+      },
+      {
+        key: "worm_pnctop",
+        texture: "worm_pnctop",
+        end: 12,
+        rate: 30,
+        repeat: 0,
+      },
+      // Jump fly up
+      {
+        key: "worm_flyup_anim",
+        texture: "worm_flyup",
+        end: 1,
+        rate: 10,
+        repeat: -1,
       },
     ];
 
@@ -522,19 +545,47 @@ export class WormEntity {
 
   playPunchAnim(): Promise<void> {
     return new Promise((resolve) => {
-      if (!this.sprite || !this.scene.anims.exists("worm_fist")) {
+      if (!this.sprite) {
         resolve();
         return;
       }
-      this.overrideAnim = "worm_fist";
-      this.currentAnim = "";
-      this.isShowingWeaponFrame = false;
-      this.sprite.play("worm_fist");
-      this.sprite.once("animationcomplete", () => {
-        this.overrideAnim = "worm_japbak";
+      // Chain: wpnclnk (wind-up) → wpnctop (punch strike)
+      // Fall back to old worm_fist if new sprites unavailable
+      const hasWindup = this.scene.anims.exists("worm_pnclnk");
+      const hasStrike = this.scene.anims.exists("worm_pnctop");
+
+      if (hasWindup && hasStrike) {
+        this.overrideAnim = "worm_pnclnk";
         this.currentAnim = "";
+        this.isShowingWeaponFrame = false;
+        this.sprite.play("worm_pnclnk");
+        this.sprite.once("animationcomplete", () => {
+          if (!this.sprite) {
+            resolve();
+            return;
+          }
+          this.overrideAnim = "worm_pnctop";
+          this.currentAnim = "";
+          this.sprite.play("worm_pnctop");
+          this.sprite.once("animationcomplete", () => {
+            this.overrideAnim = "worm_japbak";
+            this.currentAnim = "";
+            resolve();
+          });
+        });
+      } else if (this.scene.anims.exists("worm_fist")) {
+        this.overrideAnim = "worm_fist";
+        this.currentAnim = "";
+        this.isShowingWeaponFrame = false;
+        this.sprite.play("worm_fist");
+        this.sprite.once("animationcomplete", () => {
+          this.overrideAnim = "worm_japbak";
+          this.currentAnim = "";
+          resolve();
+        });
+      } else {
         resolve();
-      });
+      }
     });
   }
 
@@ -864,7 +915,12 @@ export class WormEntity {
     if (!this.usesSprites || !this.sprite || this.isDead) return;
 
     // Override animation (e.g. punch anim playing)
-    if (this.overrideAnim === "worm_fist") return;
+    if (
+      this.overrideAnim === "worm_fist" ||
+      this.overrideAnim === "worm_pnclnk" ||
+      this.overrideAnim === "worm_pnctop"
+    )
+      return;
 
     // Jump/backflip animation takes priority while playing
     if (this.jumpAnimPlaying) return;
@@ -878,8 +934,12 @@ export class WormEntity {
     if (airborne) {
       this.isShowingWeaponFrame = false;
       if (this.isJumping) {
-        // Voluntary jump — use the gentle fall animation
-        this.playAnimation("worm_fall_anim");
+        // Voluntary jump — use flyup while rising, fall while descending
+        if (this.state.vy < 0 && this.scene.anims.exists("worm_flyup_anim")) {
+          this.playAnimation("worm_flyup_anim");
+        } else {
+          this.playAnimation("worm_fall_anim");
+        }
       } else {
         // Knockback from explosion — use the tumbling fly animation
         this.playAnimation("worm_fly_anim");

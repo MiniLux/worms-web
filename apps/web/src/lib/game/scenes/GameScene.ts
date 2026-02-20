@@ -138,6 +138,11 @@ export class GameScene extends Phaser.Scene {
       worm_japbak: { file: "wjapbak.png" },
       worm_fist: { file: "wfist.png" },
       worm_firblast: { file: "wfirbl1.png" },
+      worm_bndlnk: { file: "wbndlnk.png" },
+      worm_pnclnk: { file: "wpnclnk.png" },
+      worm_pnctop: { file: "wpnctop.png" },
+      // Jump flying up
+      worm_flyup: { file: "wflyup.png" },
       // Shotgun draw and put-away animations
       worm_shglnk: { file: "wshglnk.png" },
       worm_shgbak: { file: "wshgbak.png" },
