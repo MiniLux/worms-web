@@ -229,30 +229,64 @@ export function simulateBallistic(
       }
     }
 
-    // Check terrain collision
-    if (
-      Math.round(x) >= 0 &&
-      Math.round(x) < TERRAIN_WIDTH &&
-      Math.round(y) >= 0 &&
-      Math.round(y) < TERRAIN_HEIGHT &&
-      getBitmapPixel(bitmap, Math.round(x), Math.round(y))
-    ) {
+    // Check terrain collision using a small circular hitbox (radius 3)
+    const projRadius = 3;
+    const rx = Math.round(x);
+    const ry = Math.round(y);
+    let terrainHit = false;
+    if (rx >= 0 && rx < TERRAIN_WIDTH && ry >= 0 && ry < TERRAIN_HEIGHT) {
+      // Check center and a ring of points around the projectile
+      if (getBitmapPixel(bitmap, rx, ry)) {
+        terrainHit = true;
+      } else {
+        for (let a = 0; a < 8; a++) {
+          const ang = (a / 8) * Math.PI * 2;
+          const cx = Math.round(rx + Math.cos(ang) * projRadius);
+          const cy = Math.round(ry + Math.sin(ang) * projRadius);
+          if (
+            cx >= 0 &&
+            cx < TERRAIN_WIDTH &&
+            cy >= 0 &&
+            cy < TERRAIN_HEIGHT &&
+            getBitmapPixel(bitmap, cx, cy)
+          ) {
+            terrainHit = true;
+            break;
+          }
+        }
+      }
+    }
+
+    if (terrainHit) {
       if (bounceElasticity > 0) {
         const prevX = trajectory[trajectory.length - 2]?.x ?? x;
         const prevY = trajectory[trajectory.length - 2]?.y ?? y;
 
-        // Determine if it's a wall or floor hit by checking adjacent pixels
-        const rx = Math.round(x);
-        const ry = Math.round(y);
-        const hitBelow =
-          ry + 1 < TERRAIN_HEIGHT && getBitmapPixel(bitmap, rx, ry + 1);
-        const hitAbove = ry - 1 >= 0 && getBitmapPixel(bitmap, rx, ry - 1);
-        const hitLeft = rx - 1 >= 0 && getBitmapPixel(bitmap, rx - 1, ry);
-        const hitRight =
-          rx + 1 < TERRAIN_WIDTH && getBitmapPixel(bitmap, rx + 1, ry);
+        // Compute surface normal by sampling terrain in a wider area
+        // Count solid pixels in each direction to determine the surface orientation
+        const sampleRadius = 6;
+        let nx = 0;
+        let ny = 0;
+        for (let sy = -sampleRadius; sy <= sampleRadius; sy++) {
+          for (let sx = -sampleRadius; sx <= sampleRadius; sx++) {
+            const px = rx + sx;
+            const py = ry + sy;
+            if (
+              px >= 0 &&
+              px < TERRAIN_WIDTH &&
+              py >= 0 &&
+              py < TERRAIN_HEIGHT &&
+              getBitmapPixel(bitmap, px, py)
+            ) {
+              // Each solid pixel contributes a normal pointing away from it
+              nx -= sx;
+              ny -= sy;
+            }
+          }
+        }
 
-        const verticalWall = (hitLeft || hitRight) && !hitAbove && !hitBelow;
-        const horizontalFloor = (hitAbove || hitBelow) && !hitLeft && !hitRight;
+        // Normalize
+        const nLen = Math.sqrt(nx * nx + ny * ny);
 
         // Back up to previous position
         x = prevX;
@@ -263,16 +297,15 @@ export function simulateBallistic(
           t,
         };
 
-        if (verticalWall) {
-          // Wall hit: reverse horizontal velocity
-          vx = -vx * bounceElasticity;
-          vy = vy * bounceElasticity;
-        } else if (horizontalFloor) {
-          // Floor/ceiling hit: reverse vertical velocity
-          vx = vx * bounceElasticity;
-          vy = -vy * bounceElasticity;
+        if (nLen > 0.01) {
+          // Reflect velocity across the surface normal
+          nx /= nLen;
+          ny /= nLen;
+          const dot = vx * nx + vy * ny;
+          vx = (vx - 2 * dot * nx) * bounceElasticity;
+          vy = (vy - 2 * dot * ny) * bounceElasticity;
         } else {
-          // Corner or ambiguous: reverse both
+          // Fallback: reverse both
           vx = -vx * bounceElasticity;
           vy = -vy * bounceElasticity;
         }
@@ -610,14 +643,36 @@ export function simulateWormStep(
       };
     }
 
-    // Standing still on ground
-    return { x, y, vx: 0, vy: 0, landed: false, landingVy: 0, inWater: false };
+    // Standing still on ground — check if body is embedded and push up if needed
+    let adjustedY = y;
+    if (getBitmapPixel(bitmap, Math.round(x), Math.round(y))) {
+      // Center is inside terrain, push up to surface
+      for (
+        let sy = Math.round(y);
+        sy >= Math.max(0, Math.round(y) - 30);
+        sy--
+      ) {
+        if (!getBitmapPixel(bitmap, Math.round(x), sy)) {
+          adjustedY = sy - halfH + 1;
+          break;
+        }
+      }
+    }
+    return {
+      x,
+      y: adjustedY,
+      vx: 0,
+      vy: 0,
+      landed: false,
+      landingVy: 0,
+      inWater: false,
+    };
   }
 
   // Worm is airborne — apply physics
   vy += GRAVITY * dt;
-  const newX = x + vx * dt; // no clamping — worms can fly off map edges
-  const newY = y + vy * dt;
+  let newX = x + vx * dt; // no clamping — worms can fly off map edges
+  let newY = y + vy * dt;
 
   // Check water
   if (newY + halfH >= WATER_LEVEL) {
@@ -632,7 +687,37 @@ export function simulateWormStep(
     };
   }
 
-  // Check terrain collision at new position
+  // --- Side collision: check if worm body hits terrain from the sides ---
+  // Sample a few points along the worm's leading edge (direction of travel)
+  const rx = Math.round(newX);
+  const ry = Math.round(newY);
+  if (vx !== 0) {
+    const edgeX = Math.round(newX + (vx > 0 ? halfW : -halfW));
+    // Check 3 body points on the leading side (top, middle, bottom-ish)
+    const bodyChecks = [ry - halfH + 2, ry, ry + halfH - 4];
+    let sideHit = false;
+    for (const cy of bodyChecks) {
+      if (
+        cy >= 0 &&
+        cy < TERRAIN_HEIGHT &&
+        edgeX >= 0 &&
+        edgeX < TERRAIN_WIDTH
+      ) {
+        if (getBitmapPixel(bitmap, edgeX, cy)) {
+          sideHit = true;
+          break;
+        }
+      }
+    }
+    if (sideHit) {
+      // Stop horizontal movement, keep vertical
+      newX = x;
+      vx = -vx * 0.15; // tiny bounce-back
+      if (Math.abs(vx) < 5) vx = 0;
+    }
+  }
+
+  // --- Bottom collision: check if feet hit terrain ---
   const newFeetY = newY + halfH;
   if (
     newFeetY >= 0 &&
@@ -683,6 +768,41 @@ export function simulateWormStep(
       landingVy,
       inWater: false,
     };
+  }
+
+  // --- Head collision: check if top of worm hits terrain (e.g. ceiling) ---
+  const headY = Math.round(newY - halfH);
+  if (
+    headY >= 0 &&
+    headY < TERRAIN_HEIGHT &&
+    Math.round(newX) >= 0 &&
+    Math.round(newX) < TERRAIN_WIDTH &&
+    vy < 0 &&
+    getBitmapPixel(bitmap, Math.round(newX), headY)
+  ) {
+    // Bonk head on ceiling — stop upward, start falling
+    newY = y;
+    vy = Math.abs(vy) * 0.1;
+    if (vy < 5) vy = 5;
+  }
+
+  // --- Push-out: if worm center is inside terrain, push up to surface ---
+  if (
+    Math.round(newX) >= 0 &&
+    Math.round(newX) < TERRAIN_WIDTH &&
+    Math.round(newY) >= 0 &&
+    Math.round(newY) < TERRAIN_HEIGHT &&
+    getBitmapPixel(bitmap, Math.round(newX), Math.round(newY))
+  ) {
+    // Worm center is embedded in terrain — push upward to find surface
+    let pushY = Math.round(newY);
+    for (let sy = pushY; sy >= Math.max(0, pushY - 30); sy--) {
+      if (!getBitmapPixel(bitmap, Math.round(newX), sy)) {
+        newY = sy - halfH + 1;
+        vy = 0;
+        break;
+      }
+    }
   }
 
   // Still airborne
