@@ -441,6 +441,41 @@ export class WormEntity {
     } else {
       this.overrideAnim = null;
     }
+    // Play draw animation immediately if not walking
+    if (weaponId && !this.isWalking) {
+      this.playDrawAnim(weaponId);
+    }
+  }
+
+  /** Play the weapon draw (gun-out) animation for the given weapon */
+  private playDrawAnim(weaponId: WeaponId): void {
+    const drawInfo = WEAPON_DRAW_SPRITES[weaponId];
+    if (
+      !drawInfo ||
+      !this.sprite ||
+      !hasSpritesheet(this.scene, drawInfo.texture)
+    )
+      return;
+    this.drawAnimPlaying = true;
+    this.isShowingWeaponFrame = false;
+    this.currentAnim = "";
+    const animKey = "draw_" + drawInfo.texture;
+    if (!this.scene.anims.exists(animKey)) {
+      this.scene.anims.create({
+        key: animKey,
+        frames: this.scene.anims.generateFrameNumbers(drawInfo.texture, {
+          start: 0,
+          end: drawInfo.frames - 1,
+        }),
+        frameRate: 30,
+        repeat: 0,
+      });
+    }
+    this.sprite.play(animKey);
+    this.sprite.once("animationcomplete", () => {
+      this.drawAnimPlaying = false;
+      this.currentAnim = "";
+    });
   }
 
   /** Update the aim angle — used for weapon hold sprite frame selection.
@@ -509,33 +544,7 @@ export class WormEntity {
     this.walkingExplicit = walking;
     if (!walking && this.holdingWeapon) {
       // Play weapon draw animation when stopping, then return to aim pose
-      const drawInfo = WEAPON_DRAW_SPRITES[this.holdingWeapon];
-      if (
-        drawInfo &&
-        this.sprite &&
-        hasSpritesheet(this.scene, drawInfo.texture)
-      ) {
-        this.drawAnimPlaying = true;
-        this.isShowingWeaponFrame = false;
-        this.currentAnim = "";
-        const animKey = "draw_" + drawInfo.texture;
-        if (!this.scene.anims.exists(animKey)) {
-          this.scene.anims.create({
-            key: animKey,
-            frames: this.scene.anims.generateFrameNumbers(drawInfo.texture, {
-              start: 0,
-              end: drawInfo.frames - 1,
-            }),
-            frameRate: 30,
-            repeat: 0,
-          });
-        }
-        this.sprite.play(animKey);
-        this.sprite.once("animationcomplete", () => {
-          this.drawAnimPlaying = false;
-          this.currentAnim = "";
-        });
-      }
+      this.playDrawAnim(this.holdingWeapon);
     }
   }
 
