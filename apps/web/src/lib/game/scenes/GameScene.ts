@@ -76,7 +76,41 @@ export class GameScene extends Phaser.Scene {
 
   // ─── Preload Sprites ────────────────────────────────────
 
+  // Loading screen
+  private loadingBar: Phaser.GameObjects.Rectangle | null = null;
+  private loadingBarBg: Phaser.GameObjects.Rectangle | null = null;
+  private loadingText: Phaser.GameObjects.Text | null = null;
+  private hudLaunched: boolean = false;
+
   preload(): void {
+    // Loading bar
+    const { width, height } = this.cameras.main;
+    const barW = 300;
+    const barH = 20;
+
+    this.loadingBarBg = this.add
+      .rectangle(width / 2, height / 2 + 10, barW + 4, barH + 4, 0x000000, 0.8)
+      .setStrokeStyle(1, 0x444444)
+      .setDepth(100);
+    this.loadingBar = this.add
+      .rectangle(width / 2 - barW / 2, height / 2 + 10, 0, barH, 0xffcc00)
+      .setOrigin(0, 0.5)
+      .setDepth(101);
+    this.loadingText = this.add
+      .text(width / 2, height / 2 - 20, "Loading...", {
+        fontSize: "14px",
+        fontFamily: "monospace",
+        color: "#ffffff",
+      })
+      .setOrigin(0.5)
+      .setDepth(101);
+
+    this.load.on("progress", (value: number) => {
+      this.loadingBar?.setSize(barW * value, barH);
+    });
+    this.load.on("complete", () => {
+      this.loadingText?.setText("Connecting...");
+    });
     // Worm spritesheets — 60px wide vertical strips, 60x60 frames
     const wormSprites: Record<string, { file: string }> = {
       worm_walk: { file: "wwalk.png" },
@@ -303,8 +337,6 @@ export class GameScene extends Phaser.Scene {
     this.socket.addEventListener("error", (e) => {
       console.error("[GameScene] Socket error", e);
     });
-
-    this.scene.launch("HUDScene");
   }
 
   // Smoke trail sprites
@@ -883,7 +915,27 @@ export class GameScene extends Phaser.Scene {
 
   // ─── State Sync ─────────────────────────────────────────
 
+  private dismissLoading(): void {
+    if (this.loadingBar) {
+      this.loadingBar.destroy();
+      this.loadingBar = null;
+    }
+    if (this.loadingBarBg) {
+      this.loadingBarBg.destroy();
+      this.loadingBarBg = null;
+    }
+    if (this.loadingText) {
+      this.loadingText.destroy();
+      this.loadingText = null;
+    }
+    if (!this.hudLaunched) {
+      this.hudLaunched = true;
+      this.scene.launch("HUDScene");
+    }
+  }
+
   private onGameStateSync(state: GameState): void {
+    this.dismissLoading();
     this.gameState = state;
 
     if (!this.terrainRenderer) {
