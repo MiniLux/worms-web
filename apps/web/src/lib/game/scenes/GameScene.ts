@@ -80,36 +80,36 @@ export class GameScene extends Phaser.Scene {
   private loadingBar: Phaser.GameObjects.Rectangle | null = null;
   private loadingBarBg: Phaser.GameObjects.Rectangle | null = null;
   private loadingText: Phaser.GameObjects.Text | null = null;
+  private loadingLogo: Phaser.GameObjects.Image | null = null;
   private hudLaunched: boolean = false;
+  private readonly LOADING_BAR_W = 300;
 
   preload(): void {
-    // Loading bar
-    const { width, height } = this.cameras.main;
-    const barW = 300;
-    const barH = 20;
+    // Load the logo first (tiny asset, loads fast)
+    this.load.image("logo", "/logo.png");
+    this.load.once("filecomplete-image-logo", () => {
+      this.createLoadingScreen();
+    });
 
-    this.loadingBarBg = this.add
-      .rectangle(width / 2, height / 2 + 10, barW + 4, barH + 4, 0x000000, 0.8)
-      .setStrokeStyle(1, 0x444444)
-      .setDepth(100);
-    this.loadingBar = this.add
-      .rectangle(width / 2 - barW / 2, height / 2 + 10, 0, barH, 0xffcc00)
-      .setOrigin(0, 0.5)
-      .setDepth(101);
-    this.loadingText = this.add
-      .text(width / 2, height / 2 - 20, "Loading...", {
-        fontSize: "14px",
-        fontFamily: "monospace",
-        color: "#ffffff",
-      })
-      .setOrigin(0.5)
-      .setDepth(101);
-
+    // Also set up progress/complete handlers (they fire after all queued assets)
     this.load.on("progress", (value: number) => {
-      this.loadingBar?.setSize(barW * value, barH);
+      if (this.loadingBar) {
+        // Tween bar to 70% of full width based on asset progress
+        const target = this.LOADING_BAR_W * 0.7 * value;
+        this.loadingBar.setSize(Math.max(this.loadingBar.width, target), 16);
+      }
     });
     this.load.on("complete", () => {
-      this.loadingText?.setText("Connecting...");
+      if (this.loadingText) this.loadingText.setText("Connecting...");
+      // Slowly creep bar from 70% toward 90% while waiting for server
+      if (this.loadingBar) {
+        this.tweens.add({
+          targets: this.loadingBar,
+          width: this.LOADING_BAR_W * 0.9,
+          duration: 3000,
+          ease: "Sine.easeOut",
+        });
+      }
     });
     // Worm spritesheets — 60px wide vertical strips, 60x60 frames
     const wormSprites: Record<string, { file: string }> = {
@@ -264,6 +264,46 @@ export class GameScene extends Phaser.Scene {
     this.load.image("icon_grenade", "/sprites/icons/grenade.1.png");
     this.load.image("icon_firepunch", "/sprites/icons/firepnch.1.png");
     this.load.image("icon_teleport", "/sprites/icons/teleport.1.png");
+  }
+
+  private createLoadingScreen(): void {
+    const { width, height } = this.cameras.main;
+    const barH = 16;
+
+    this.loadingLogo = this.add
+      .image(width / 2, height / 2 - 50, "logo")
+      .setScale(0.15)
+      .setDepth(100);
+
+    this.loadingBarBg = this.add
+      .rectangle(
+        width / 2,
+        height / 2 + 20,
+        this.LOADING_BAR_W + 4,
+        barH + 4,
+        0x000000,
+        0.8,
+      )
+      .setStrokeStyle(1, 0x444444)
+      .setDepth(100);
+    this.loadingBar = this.add
+      .rectangle(
+        width / 2 - this.LOADING_BAR_W / 2,
+        height / 2 + 20,
+        0,
+        barH,
+        0xffcc00,
+      )
+      .setOrigin(0, 0.5)
+      .setDepth(101);
+    this.loadingText = this.add
+      .text(width / 2, height / 2 + 45, "Loading...", {
+        fontSize: "12px",
+        fontFamily: "monospace",
+        color: "#aaaaaa",
+      })
+      .setOrigin(0.5)
+      .setDepth(101);
   }
 
   // ─── Create ─────────────────────────────────────────────
@@ -916,18 +956,14 @@ export class GameScene extends Phaser.Scene {
   // ─── State Sync ─────────────────────────────────────────
 
   private dismissLoading(): void {
-    if (this.loadingBar) {
-      this.loadingBar.destroy();
-      this.loadingBar = null;
-    }
-    if (this.loadingBarBg) {
-      this.loadingBarBg.destroy();
-      this.loadingBarBg = null;
-    }
-    if (this.loadingText) {
-      this.loadingText.destroy();
-      this.loadingText = null;
-    }
+    this.loadingBar?.destroy();
+    this.loadingBar = null;
+    this.loadingBarBg?.destroy();
+    this.loadingBarBg = null;
+    this.loadingText?.destroy();
+    this.loadingText = null;
+    this.loadingLogo?.destroy();
+    this.loadingLogo = null;
     if (!this.hudLaunched) {
       this.hudLaunched = true;
       this.scene.launch("HUDScene");
