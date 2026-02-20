@@ -82,6 +82,7 @@ export class GameScene extends Phaser.Scene {
       worm_fall: { file: "wfall.png" },
       worm_die: { file: "wdie.png" },
       worm_breath: { file: "wbrth1.png" },
+      worm_breath2: { file: "wbrth2.png" },
       worm_blink: { file: "wblink1.png" },
       worm_fly: { file: "wfly1.png" },
       worm_baz: { file: "wbaz.png" },

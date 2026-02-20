@@ -119,7 +119,7 @@ export class WormEntity {
       );
       this.sprite.setDepth(3);
       this.sprite.setFlipX(initialState.facing === "right");
-      this.playAnimation("worm_idle");
+      this.playAnimation(this.getIdleAnim());
     } else {
       this.fallbackBody = scene.add.ellipse(
         initialState.x,
@@ -199,6 +199,14 @@ export class WormEntity {
         key: "worm_idle",
         texture: "worm_breath",
         end: 19,
+        rate: 30,
+        repeat: -1,
+        yoyo: true,
+      },
+      {
+        key: "worm_idle_hurt",
+        texture: "worm_breath2",
+        end: 12,
         rate: 30,
         repeat: -1,
         yoyo: true,
@@ -894,7 +902,7 @@ export class WormEntity {
     }
 
     this.isShowingWeaponFrame = false;
-    this.playAnimation("worm_idle");
+    this.playAnimation(this.getIdleAnim());
   }
 
   /**
@@ -942,6 +950,13 @@ export class WormEntity {
     } else {
       this.sprite.setFrame(frame);
     }
+  }
+
+  /** Return the correct idle animation key based on current HP */
+  private getIdleAnim(): string {
+    return this.state.health < 20 && this.scene.anims.exists("worm_idle_hurt")
+      ? "worm_idle_hurt"
+      : "worm_idle";
   }
 
   private playAnimation(key: string): void {
