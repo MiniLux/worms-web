@@ -6,6 +6,7 @@ import { GameScene } from "./GameScene";
 
 export class HUDScene extends Phaser.Scene {
   private timerText!: Phaser.GameObjects.Text;
+  private timerBg!: Phaser.GameObjects.Rectangle;
   private weaponButtons: Phaser.GameObjects.Container[] = [];
   private playerPanels: Phaser.GameObjects.Container[] = [];
   // Tracked references for animated health drain
@@ -28,7 +29,7 @@ export class HUDScene extends Phaser.Scene {
   // Wind display (Worms 2 style bar)
   private windContainer!: Phaser.GameObjects.Container;
   private windBarFill!: Phaser.GameObjects.Rectangle;
-  private windArrows: Phaser.GameObjects.Image[] = [];
+
   private windLabel!: Phaser.GameObjects.Text;
   private readonly WIND_BAR_WIDTH = 120;
   private readonly WIND_BAR_HEIGHT = 8;
@@ -41,17 +42,21 @@ export class HUDScene extends Phaser.Scene {
     this.playerId = this.registry.get("playerId") as string;
     const { width, height } = this.cameras.main;
 
-    // Timer (bottom-left corner)
-    this.timerText = this.add
-      .text(20, height - 20, "45", {
-        fontSize: "24px",
-        fontFamily: "monospace",
-        color: "#ffcc00",
-        stroke: "#000000",
-        strokeThickness: 3,
-      })
+    // Timer (bottom-left corner) — black box with white number
+    this.timerBg = this.add
+      .rectangle(20, height - 20, 40, 30, 0x000000, 0.85)
       .setOrigin(0, 1)
+      .setStrokeStyle(1, 0x444444)
       .setDepth(20);
+    this.timerText = this.add
+      .text(40, height - 20, "45", {
+        fontSize: "20px",
+        fontFamily: "monospace",
+        fontStyle: "bold",
+        color: "#ffffff",
+      })
+      .setOrigin(0.5, 1)
+      .setDepth(21);
 
     // Wind display (bottom-right corner)
     this.createWindDisplay();
@@ -127,10 +132,6 @@ export class HUDScene extends Phaser.Scene {
   }
 
   private updateWind(wind: number): void {
-    // Clear old arrows
-    for (const arrow of this.windArrows) arrow.destroy();
-    this.windArrows = [];
-
     const barW = this.WIND_BAR_WIDTH;
     const barH = this.WIND_BAR_HEIGHT;
     const halfBar = barW / 2;
@@ -161,31 +162,6 @@ export class HUDScene extends Phaser.Scene {
     } else {
       this.windBarFill.setSize(0, 0);
     }
-
-    // Place small arrow indicators alongside the bar
-    if (absWind >= 3) {
-      const arrowCount = Math.min(6, Math.max(1, Math.ceil(absWind / 16)));
-      const textureKey = wind > 0 ? "wind_right" : "wind_left";
-      const hasTexture = this.textures.exists(textureKey);
-
-      if (hasTexture) {
-        const arrowW = 14;
-
-        for (let i = 0; i < arrowCount; i++) {
-          // Right wind: arrows go right of bar; Left wind: arrows go left of bar
-          const x =
-            wind > 0
-              ? halfBar + 4 + i * arrowW + arrowW / 2
-              : -(halfBar + 4 + i * arrowW + arrowW / 2);
-          const arrow = this.add.image(x, 0, textureKey);
-          arrow.setDisplaySize(12, barH);
-          arrow.setOrigin(0.5, 0.5);
-          arrow.setTint(fillColor);
-          this.windContainer.add(arrow);
-          this.windArrows.push(arrow);
-        }
-      }
-    }
   }
 
   // ─── Resize Repositioning ──────────────────────────────
@@ -194,7 +170,8 @@ export class HUDScene extends Phaser.Scene {
     const { width, height } = this.cameras.main;
 
     // Timer (bottom-left)
-    this.timerText.setPosition(20, height - 20);
+    this.timerBg.setPosition(20, height - 20);
+    this.timerText.setPosition(40, height - 20);
 
     // Turn text (top-left) — no change needed, stays at (16, 16)
 
@@ -252,7 +229,7 @@ export class HUDScene extends Phaser.Scene {
   }): void {
     this.timeRemaining = msg.turnTime;
     this.timerText.setText(String(this.timeRemaining));
-    this.timerText.setColor("#ffcc00");
+    this.timerText.setColor("#ffffff");
     this.updateWind(msg.wind);
 
     // Show turn banner with active worm name
