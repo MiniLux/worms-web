@@ -85,6 +85,7 @@ export class WormEntity {
   private isJumping: boolean = false; // true from jump until landing (voluntary jump, not knockback)
   private drawAnimPlaying: boolean = false;
   private fireAnimPlaying: boolean = false;
+  private fireAnimTimer: Phaser.Time.TimerEvent | null = null;
   private powerGauge: Phaser.GameObjects.Graphics;
   private powerValue: number = 0;
   private showPowerGauge: boolean = false;
@@ -606,12 +607,20 @@ export class WormEntity {
     const fireTexture = WEAPON_FIRE_SPRITES[this.holdingWeapon];
     if (!fireTexture || !hasSpritesheet(this.scene, fireTexture)) return;
 
+    // Cancel any previous fire anim timer (prevents first shot's callback from
+    // resetting fireAnimPlaying after the second shot starts)
+    if (this.fireAnimTimer) {
+      this.fireAnimTimer.remove(false);
+      this.fireAnimTimer = null;
+    }
+
     // Show the fire sprite at current aim frame briefly
     this.fireAnimPlaying = true;
     this.applyWeaponAimFrame(fireTexture);
     // Return to normal aim after a short delay
-    this.scene.time.delayedCall(300, () => {
+    this.fireAnimTimer = this.scene.time.delayedCall(300, () => {
       this.fireAnimPlaying = false;
+      this.fireAnimTimer = null;
       this.isShowingWeaponFrame = false;
       this.currentAnim = "";
     });

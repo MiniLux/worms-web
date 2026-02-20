@@ -1234,17 +1234,6 @@ export class GameScene extends Phaser.Scene {
     const activeWorm = this.getActiveWorm();
     activeWorm?.playFireAnim();
 
-    const line = this.add.graphics();
-    line.setDepth(10);
-    line.lineStyle(2, 0xffff00, 1);
-    line.lineBetween(msg.fromX, msg.fromY, msg.toX, msg.toY);
-    this.tweens.add({
-      targets: line,
-      alpha: 0,
-      duration: 300,
-      onComplete: () => line.destroy(),
-    });
-
     this.applyFireEffects(msg);
 
     if (msg.shotsRemaining > 0) {
